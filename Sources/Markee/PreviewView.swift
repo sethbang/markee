@@ -143,6 +143,10 @@ private struct OutlineRow: View {
     @ObservedObject var controller: PreviewController
     @State private var isHovered: Bool = false
 
+    private var isActive: Bool {
+        controller.currentHeadingID == entry.id
+    }
+
     var body: some View {
         Button {
             controller.scrollToHeading(entry.id)
@@ -159,6 +163,13 @@ private struct OutlineRow: View {
         }
         .buttonStyle(.plain)
         .background(rowBackground)
+        .overlay(alignment: .leading) {
+            if isActive {
+                Rectangle()
+                    .fill(accentColor)
+                    .frame(width: 2)
+            }
+        }
         .onHover { isHovered = $0 }
         .help(entry.title)
     }
@@ -180,28 +191,47 @@ private struct OutlineRow: View {
     }
 
     private var textColor: Color {
-        Color(nsColor: NSColor(name: nil) { appearance in
+        if isActive {
+            // Active rows brighten to the H1 color regardless of level.
+            return Color(nsColor: NSColor(name: nil) { appearance in
+                appearance.bestMatch(from: [.darkAqua, .vibrantDark, .accessibilityHighContrastDarkAqua]) != nil
+                    ? NSColor(red: 0xf4/255, green: 0xf5/255, blue: 0xf8/255, alpha: 1)
+                    : NSColor(red: 0x0f/255, green: 0x10/255, blue: 0x14/255, alpha: 1)
+            })
+        }
+        return Color(nsColor: NSColor(name: nil) { appearance in
             let isDark = appearance.bestMatch(from: [.darkAqua, .vibrantDark, .accessibilityHighContrastDarkAqua]) != nil
             switch entry.level {
             case 1:
                 return isDark
-                    ? NSColor(red: 0xcf/255.0, green: 0xd0/255.0, blue: 0xd6/255.0, alpha: 1)
-                    : NSColor(red: 0x2b/255.0, green: 0x2d/255.0, blue: 0x34/255.0, alpha: 1)
+                    ? NSColor(red: 0xcf/255, green: 0xd0/255, blue: 0xd6/255, alpha: 1)
+                    : NSColor(red: 0x2b/255, green: 0x2d/255, blue: 0x34/255, alpha: 1)
             case 2:
                 return isDark
-                    ? NSColor(red: 0x9c/255.0, green: 0x9e/255.0, blue: 0xa7/255.0, alpha: 1)
-                    : NSColor(red: 0x5a/255.0, green: 0x5c/255.0, blue: 0x64/255.0, alpha: 1)
+                    ? NSColor(red: 0x9c/255, green: 0x9e/255, blue: 0xa7/255, alpha: 1)
+                    : NSColor(red: 0x5a/255, green: 0x5c/255, blue: 0x64/255, alpha: 1)
             default:
                 return isDark
-                    ? NSColor(red: 0x7d/255.0, green: 0x7f/255.0, blue: 0x87/255.0, alpha: 1)
-                    : NSColor(red: 0x7a/255.0, green: 0x7d/255.0, blue: 0x86/255.0, alpha: 1)
+                    ? NSColor(red: 0x7d/255, green: 0x7f/255, blue: 0x87/255, alpha: 1)
+                    : NSColor(red: 0x7a/255, green: 0x7d/255, blue: 0x86/255, alpha: 1)
             }
+        })
+    }
+
+    private var accentColor: Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.darkAqua, .vibrantDark, .accessibilityHighContrastDarkAqua]) != nil
+                ? NSColor(red: 0xf3/255, green: 0xa2/255, blue: 0x6e/255, alpha: 1)
+                : NSColor(red: 0xa8/255, green: 0x54/255, blue: 0x28/255, alpha: 1)
         })
     }
 
     @ViewBuilder
     private var rowBackground: some View {
-        if isHovered {
+        if isActive {
+            // Whisper-faint tinted background using the accent color
+            accentColor.opacity(0.06)
+        } else if isHovered {
             Color.primary.opacity(0.03)
         } else {
             Color.clear
