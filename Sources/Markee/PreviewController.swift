@@ -12,6 +12,7 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
     @Published var outline: [OutlineEntry] = []
     @Published var errorBanner: String? = nil
     @Published var showOutline: Bool = false
+    @Published var currentHeadingID: String? = nil
 
     let webView: WKWebView
     let bundleHandler = BundleSchemeHandler()
@@ -198,6 +199,11 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
         case "taskToggle":
             if let line = body["line"] as? Int, let checked = body["checked"] as? Bool {
                 toggleTask(atLine: line, checked: checked)
+            }
+        case "scrollSection":
+            let id = body["id"] as? String
+            if id != self.currentHeadingID {
+                self.currentHeadingID = id
             }
         default:
             break
