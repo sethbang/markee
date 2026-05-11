@@ -6,6 +6,7 @@ const assert = require("node:assert/strict");
 const path = require("node:path");
 
 const { collectTaskLineNumbers, slugify } = require(path.join(__dirname, "..", "Resources", "web", "util.js"));
+const { pickActiveHeading } = require(path.join(__dirname, "..", "Resources", "web", "util.js"));
 
 test("collectTaskLineNumbers — empty input", () => {
     assert.deepEqual(collectTaskLineNumbers(""), []);
@@ -155,4 +156,57 @@ test("slugify — counts map de-duplicates across calls", () => {
     assert.equal(slugify("Setup", counts), "setup-1");
     assert.equal(slugify("Setup", counts), "setup-2");
     assert.equal(slugify("Other", counts), "other");
+});
+
+test("pickActiveHeading — empty list returns null", () => {
+    assert.equal(pickActiveHeading([], 800), null);
+});
+
+test("pickActiveHeading — scrolled to top picks first heading", () => {
+    // All heading tops are below the 20% threshold (160px) → first heading wins.
+    const positions = [
+        { id: "intro", top: 300 },
+        { id: "setup", top: 600 },
+    ];
+    assert.equal(pickActiveHeading(positions, 800), "intro");
+});
+
+test("pickActiveHeading — last heading at-or-above the 20% line wins", () => {
+    // viewport 800, threshold = 160. Heading tops as seen via getBoundingClientRect:
+    // 'intro' at top 50 (passed), 'setup' at top 150 (just barely passed),
+    // 'next' at top 220 (not yet). Active = 'setup'.
+    const positions = [
+        { id: "intro", top: 50 },
+        { id: "setup", top: 150 },
+        { id: "next", top: 220 },
+    ];
+    assert.equal(pickActiveHeading(positions, 800), "setup");
+});
+
+test("pickActiveHeading — exactly at the threshold is active", () => {
+    // threshold = 0.2 * 800 = 160. Heading at top = 160 is active.
+    assert.equal(
+        pickActiveHeading([{ id: "h", top: 160 }, { id: "h2", top: 161 }], 800),
+        "h"
+    );
+});
+
+test("pickActiveHeading — all headings below threshold picks first", () => {
+    const positions = [
+        { id: "a", top: 1000 },
+        { id: "b", top: 2000 },
+    ];
+    assert.equal(pickActiveHeading(positions, 800), "a");
+});
+
+test("pickActiveHeading — preserves document order, not visual position", () => {
+    // Caller passes positions in document order. We pick last qualifying entry
+    // in that order, even if positions are non-monotonic (shouldn't happen,
+    // but be tolerant).
+    const positions = [
+        { id: "first", top: 100 },
+        { id: "second", top: 50 },
+    ];
+    // threshold 160. Both qualify. Last in order = 'second'.
+    assert.equal(pickActiveHeading(positions, 800), "second");
 });

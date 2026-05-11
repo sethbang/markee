@@ -70,5 +70,25 @@
         return n === 0 ? base : `${base}-${n}`;
     }
 
-    return { collectTaskLineNumbers, slugify };
+    /**
+     * Given an in-document-order list of heading positions `{id, top}` (top in
+     * px relative to the viewport, as from getBoundingClientRect().top) and the
+     * current viewport height, return the id of the "active" heading — the
+     * last one whose top is at-or-above the 20% line. If none qualify (we're
+     * above the first heading), returns the first heading's id. Returns null
+     * for an empty list.
+     */
+    function pickActiveHeading(positions, viewportHeight) {
+        if (!Array.isArray(positions) || positions.length === 0) return null;
+        const threshold = viewportHeight * 0.2;
+        let active = positions[0].id;
+        for (let i = 0; i < positions.length; i++) {
+            if (positions[i].top <= threshold) {
+                active = positions[i].id;
+            }
+        }
+        return active;
+    }
+
+    return { collectTaskLineNumbers, slugify, pickActiveHeading };
 });
