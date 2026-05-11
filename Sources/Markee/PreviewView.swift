@@ -97,39 +97,21 @@ private struct OutlineSidebar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Outline")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .textCase(.uppercase)
-                .padding(.horizontal, 12)
-                .padding(.top, 10)
-                .padding(.bottom, 4)
+            // No header label — sidebar's existence + filename in titlebar is enough.
+            Color.clear.frame(height: 10)
+
             if controller.outline.isEmpty {
                 Text("No headings")
                     .foregroundStyle(.tertiary)
                     .font(.system(size: 12))
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, 16)
                     .padding(.top, 4)
                 Spacer()
             } else {
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 1) {
+                    LazyVStack(alignment: .leading, spacing: 0) {
                         ForEach(controller.outline) { entry in
-                            Button {
-                                controller.scrollToHeading(entry.id)
-                            } label: {
-                                Text(entry.title)
-                                    .font(.system(size: 12))
-                                    .lineLimit(1)
-                                    .foregroundStyle(.primary)
-                                    .padding(.leading, CGFloat(max(0, entry.level - 1)) * 10 + 12)
-                                    .padding(.vertical, 3)
-                                    .padding(.trailing, 8)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .background(.clear)
+                            OutlineRow(entry: entry, controller: controller)
                         }
                     }
                     .padding(.bottom, 8)
@@ -137,7 +119,93 @@ private struct OutlineSidebar: View {
             }
         }
         .frame(maxHeight: .infinity, alignment: .top)
-        .background(Color(NSColor.controlBackgroundColor))
+        .background(sidebarBackground)
+        .overlay(alignment: .trailing) {
+            Rectangle()
+                .fill(Color.primary.opacity(0.06))
+                .frame(width: 1)
+        }
+    }
+
+    private var sidebarBackground: Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            if appearance.bestMatch(from: [.darkAqua, .vibrantDark, .accessibilityHighContrastDarkAqua]) != nil {
+                return NSColor(red: 0x16/255.0, green: 0x17/255.0, blue: 0x1b/255.0, alpha: 1)
+            } else {
+                return NSColor(red: 0xf1/255.0, green: 0xf2/255.0, blue: 0xf5/255.0, alpha: 1)
+            }
+        })
+    }
+}
+
+private struct OutlineRow: View {
+    let entry: OutlineEntry
+    @ObservedObject var controller: PreviewController
+    @State private var isHovered: Bool = false
+
+    var body: some View {
+        Button {
+            controller.scrollToHeading(entry.id)
+        } label: {
+            Text(entry.title)
+                .font(.system(size: fontSize, weight: fontWeight))
+                .foregroundStyle(textColor)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.leading, leadingIndent)
+                .padding(.trailing, 8)
+                .padding(.vertical, 5)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(rowBackground)
+        .onHover { isHovered = $0 }
+        .help(entry.title)
+    }
+
+    private var leadingIndent: CGFloat {
+        switch entry.level {
+        case 1: return 16
+        case 2: return 28
+        default: return 40
+        }
+    }
+
+    private var fontSize: CGFloat {
+        entry.level >= 3 ? 12 : 12.5
+    }
+
+    private var fontWeight: Font.Weight {
+        entry.level == 1 ? .medium : .regular
+    }
+
+    private var textColor: Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .vibrantDark, .accessibilityHighContrastDarkAqua]) != nil
+            switch entry.level {
+            case 1:
+                return isDark
+                    ? NSColor(red: 0xcf/255.0, green: 0xd0/255.0, blue: 0xd6/255.0, alpha: 1)
+                    : NSColor(red: 0x2b/255.0, green: 0x2d/255.0, blue: 0x34/255.0, alpha: 1)
+            case 2:
+                return isDark
+                    ? NSColor(red: 0x9c/255.0, green: 0x9e/255.0, blue: 0xa7/255.0, alpha: 1)
+                    : NSColor(red: 0x5a/255.0, green: 0x5c/255.0, blue: 0x64/255.0, alpha: 1)
+            default:
+                return isDark
+                    ? NSColor(red: 0x7d/255.0, green: 0x7f/255.0, blue: 0x87/255.0, alpha: 1)
+                    : NSColor(red: 0x7a/255.0, green: 0x7d/255.0, blue: 0x86/255.0, alpha: 1)
+            }
+        })
+    }
+
+    @ViewBuilder
+    private var rowBackground: some View {
+        if isHovered {
+            Color.primary.opacity(0.03)
+        } else {
+            Color.clear
+        }
     }
 }
 
