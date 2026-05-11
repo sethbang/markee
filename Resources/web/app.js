@@ -73,53 +73,9 @@
             .replace(/'/g, "&#39;");
     }
 
-    // ---- slugify -----------------------------------------------------------
-    const slugCount = new Map();
-    function slugify(text) {
-        const base = String(text)
-            .toLowerCase()
-            .replace(/[^\w\s-]/g, "")
-            .trim()
-            .replace(/\s+/g, "-");
-        let slug = base || "section";
-        let n = slugCount.get(slug) || 0;
-        if (n > 0) slug = `${slug}-${n}`;
-        slugCount.set(base || "section", n + 1);
-        return slug;
-    }
-
-    // ---- task list mapping --------------------------------------------------
-    // Scan raw source for task-list lines, skipping YAML front-matter and
-    // fenced code blocks. Returns 0-based line indices.
-    function collectTaskLineNumbers(source) {
-        const result = [];
-        const lines = source.replace(/^﻿/, "").split("\n");
-        let i = 0;
-
-        // Skip YAML front matter
-        if (lines[0] === "---") {
-            for (let j = 1; j < lines.length; j++) {
-                if (lines[j] === "---" || lines[j] === "...") { i = j + 1; break; }
-            }
-        }
-
-        let fence = null; // "`" or "~" when inside a fenced block
-        for (; i < lines.length; i++) {
-            const stripped = lines[i].replace(/\r$/, "");
-            const fenceOpen = stripped.match(/^\s{0,3}(```+|~~~+)/);
-            if (fenceOpen) {
-                const marker = fenceOpen[1][0];
-                if (fence === null) { fence = marker; continue; }
-                if (fence === marker) { fence = null; continue; }
-                continue;
-            }
-            if (fence !== null) continue;
-            if (/^\s*(?:[-+*]|\d+\.)\s+\[[ xX]\](?:\s|$)/.test(stripped)) {
-                result.push(i);
-            }
-        }
-        return result;
-    }
+    // Pure helpers (collectTaskLineNumbers, slugify) live in util.js so they're
+    // testable from Node. util.js exposes them via window.markeeUtil.
+    const { collectTaskLineNumbers, slugify } = window.markeeUtil;
 
     function onTaskToggle(ev) {
         const cb = ev.currentTarget;
@@ -154,8 +110,8 @@
         const prevScroll = window.scrollY;
         const prevHeight = document.documentElement.scrollHeight;
 
-        // Reset slug counter per render
-        slugCount.clear();
+        // Per-render slug counter for heading-id de-duplication
+        const slugCount = new Map();
 
         let html;
         try {
@@ -178,7 +134,7 @@
         article.querySelectorAll("h1, h2, h3, h4, h5, h6").forEach((h) => {
             const level = parseInt(h.tagName.substring(1), 10);
             const title = h.textContent || "";
-            const id = h.id || slugify(title);
+            const id = h.id || slugify(title, slugCount);
             h.id = id;
             items.push({ id, level, title });
         });

@@ -3,7 +3,7 @@ APP_BUNDLE := $(APP_NAME).app
 BIN := .build/release/$(APP_NAME)
 CONFIG := release
 
-.PHONY: all build app run clean fetch-vendor install-cli icon
+.PHONY: all build app run clean fetch-vendor install-cli icon test test-swift test-js
 
 all: app
 
@@ -40,6 +40,14 @@ install-cli: app
 		echo "Need write access to /usr/local/bin. Try: sudo make install-cli"; \
 		exit 1; \
 	fi
+
+test: test-swift test-js
+
+test-swift:
+	swift test
+
+test-js:
+	node --test Tests/util.test.js
 
 clean:
 	swift package clean

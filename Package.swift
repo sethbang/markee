@@ -12,5 +12,10 @@ let package = Package(
             name: "Markee",
             path: "Sources/Markee"
         ),
+        .testTarget(
+            name: "MarkeeTests",
+            dependencies: ["Markee"],
+            path: "Tests/MarkeeTests"
+        ),
     ]
 )

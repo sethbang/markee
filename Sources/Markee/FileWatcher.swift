@@ -29,6 +29,10 @@ final class FileWatcher {
     private func cancelInternal() {
         reattachItem?.cancel(); reattachItem = nil
         changeDebounce?.cancel(); changeDebounce = nil
+        releaseSource()
+    }
+
+    private func releaseSource() {
         source?.cancel()
         source = nil
     }
@@ -36,7 +40,9 @@ final class FileWatcher {
     private func attach() {
         queue.async { [weak self] in
             guard let self else { return }
-            self.cancelInternal()
+            // Only release the previous source — do NOT cancel pending reattach
+            // or debounce work items; the caller may have just scheduled them.
+            self.releaseSource()
             let descriptor = open(self.url.path, O_EVTONLY)
             guard descriptor >= 0 else {
                 self.scheduleReattach()
