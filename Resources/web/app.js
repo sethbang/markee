@@ -76,6 +76,8 @@
     // ---- active-heading scroll-spy -----------------------------------------
     let headingObserver = null;
     let lastActiveID = null;
+    let currentHeadings = [];
+    let scrollRAF = null;
 
     function rebuildHeadingObserver(headings) {
         if (headingObserver) {
@@ -83,6 +85,7 @@
             headingObserver = null;
         }
         lastActiveID = null;
+        currentHeadings = headings || [];
         if (!headings || headings.length === 0 || !("IntersectionObserver" in window)) return;
 
         // Fire when a heading is anywhere in the top 20% strip of the viewport.
@@ -95,20 +98,15 @@
 
         headings.forEach((h) => headingObserver.observe(h));
 
-        // Also recompute on scroll (covers tall sections with no heading
-        // crossings) and on resize.
-        window.addEventListener("scroll", scrollHandler, { passive: true });
-        window.addEventListener("resize", scrollHandler, { passive: true });
         // Initial pick
         recomputeActiveHeading(headings);
     }
 
     function scrollHandler() {
-        if (scrollHandler._raf) return;
-        scrollHandler._raf = requestAnimationFrame(() => {
-            scrollHandler._raf = null;
-            const headings = Array.from(document.querySelectorAll("#content h1, #content h2, #content h3, #content h4, #content h5, #content h6"));
-            recomputeActiveHeading(headings);
+        if (scrollRAF) return;
+        scrollRAF = requestAnimationFrame(() => {
+            scrollRAF = null;
+            recomputeActiveHeading(currentHeadings);
         });
     }
 
@@ -179,7 +177,8 @@
 
         // Assign ids to headings + build outline
         const items = [];
-        article.querySelectorAll("h1, h2, h3, h4, h5, h6").forEach((h) => {
+        const headingEls = Array.from(article.querySelectorAll("h1, h2, h3, h4, h5, h6"));
+        headingEls.forEach((h) => {
             const level = parseInt(h.tagName.substring(1), 10);
             const title = h.textContent || "";
             const id = h.id || slugify(title, slugCount);
@@ -187,6 +186,12 @@
             items.push({ id, level, title });
         });
         post("outline", { items });
+
+        // Re-wire the active-heading observer to the new heading set.
+        // Disconnect happens inside rebuildHeadingObserver — calling it
+        // here (rather than at the end of render) prevents the old
+        // observer from briefly observing detached nodes.
+        rebuildHeadingObserver(headingEls);
 
         // Tag task-list items with their source line, attach click handler.
         // Source-line indices are computed against the ORIGINAL source so they
@@ -240,9 +245,6 @@
             window.scrollTo(0, targetY);
         }
 
-        // Build / rebuild active-heading observer for the new heading set
-        const headings = Array.from(article.querySelectorAll("h1, h2, h3, h4, h5, h6"));
-        rebuildHeadingObserver(headings);
     }
 
     function scrollToHeading(id) {
@@ -323,6 +325,9 @@ ${cssParts.join("\n\n")}
             } catch (_) { /* ignore */ }
         }
     });
+
+    window.addEventListener("scroll", scrollHandler, { passive: true });
+    window.addEventListener("resize", scrollHandler, { passive: true });
 
     // Tell Swift we're ready to receive render() calls
     post("ready");
