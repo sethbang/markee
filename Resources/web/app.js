@@ -73,9 +73,57 @@
             .replace(/'/g, "&#39;");
     }
 
+    // ---- active-heading scroll-spy -----------------------------------------
+    let headingObserver = null;
+    let lastActiveID = null;
+
+    function rebuildHeadingObserver(headings) {
+        if (headingObserver) {
+            headingObserver.disconnect();
+            headingObserver = null;
+        }
+        lastActiveID = null;
+        if (!headings || headings.length === 0 || !("IntersectionObserver" in window)) return;
+
+        // Fire when a heading is anywhere in the top 20% strip of the viewport.
+        // rootMargin "0px 0px -80% 0px" shrinks the bottom of the observation
+        // box to leave only the top 20% — any heading crossing in/out of that
+        // band triggers a re-pick.
+        headingObserver = new IntersectionObserver(() => {
+            recomputeActiveHeading(headings);
+        }, { rootMargin: "0px 0px -80% 0px", threshold: 0 });
+
+        headings.forEach((h) => headingObserver.observe(h));
+
+        // Also recompute on scroll (covers tall sections with no heading
+        // crossings) and on resize.
+        window.addEventListener("scroll", scrollHandler, { passive: true });
+        window.addEventListener("resize", scrollHandler, { passive: true });
+        // Initial pick
+        recomputeActiveHeading(headings);
+    }
+
+    function scrollHandler() {
+        if (scrollHandler._raf) return;
+        scrollHandler._raf = requestAnimationFrame(() => {
+            scrollHandler._raf = null;
+            const headings = Array.from(document.querySelectorAll("#content h1, #content h2, #content h3, #content h4, #content h5, #content h6"));
+            recomputeActiveHeading(headings);
+        });
+    }
+
+    function recomputeActiveHeading(headings) {
+        const positions = headings.map((h) => ({ id: h.id, top: h.getBoundingClientRect().top }));
+        const id = pickActiveHeading(positions, window.innerHeight);
+        if (id !== lastActiveID) {
+            lastActiveID = id;
+            post("scrollSection", { id });
+        }
+    }
+
     // Pure helpers (collectTaskLineNumbers, slugify) live in util.js so they're
     // testable from Node. util.js exposes them via window.markeeUtil.
-    const { collectTaskLineNumbers, slugify } = window.markeeUtil;
+    const { collectTaskLineNumbers, slugify, pickActiveHeading } = window.markeeUtil;
 
     function onTaskToggle(ev) {
         const cb = ev.currentTarget;
@@ -191,6 +239,10 @@
         } else {
             window.scrollTo(0, targetY);
         }
+
+        // Build / rebuild active-heading observer for the new heading set
+        const headings = Array.from(article.querySelectorAll("h1, h2, h3, h4, h5, h6"));
+        rebuildHeadingObserver(headings);
     }
 
     function scrollToHeading(id) {
