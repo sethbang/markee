@@ -1,0 +1,23 @@
+.build/
+.swiftpm/
+DerivedData/
+build/
+
+# App bundles (built artifacts)
+Markee.app/
+Macdown.app/
+
+# Generated icon (built from AppIcon.svg by scripts/build-icon.sh)
+Resources/AppIcon.icns
+
+# Vendored JS/CSS libraries (fetched by scripts/fetch-vendor.sh)
+Resources/web/vendor/
+
+# Xcode
+*.xcodeproj/
+*.xcworkspace/
+
+# Claude Code session state
+.claude/
+
+.DS_Store

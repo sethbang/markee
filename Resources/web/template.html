@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Markee Preview</title>
+
+    <link rel="stylesheet" href="markee-app://app/theme.css" />
+    <link rel="stylesheet" href="markee-app://app/vendor/highlight/github.min.css" id="hljs-light" />
+    <link rel="stylesheet" href="markee-app://app/vendor/highlight/github-dark.min.css" id="hljs-dark" media="(prefers-color-scheme: dark)" />
+    <link rel="stylesheet" href="markee-app://app/vendor/katex/katex.min.css" />
+
+    <script src="markee-app://app/vendor/markdown-it/markdown-it.min.js"></script>
+    <script src="markee-app://app/vendor/markdown-it/markdown-it-footnote.min.js"></script>
+    <script src="markee-app://app/vendor/markdown-it/markdown-it-deflist.min.js"></script>
+    <script src="markee-app://app/vendor/markdown-it/markdown-it-attrs.min.js"></script>
+    <script src="markee-app://app/vendor/markdown-it/markdown-it-task-lists.min.js"></script>
+    <script src="markee-app://app/vendor/highlight/highlight.min.js"></script>
+    <script src="markee-app://app/vendor/katex/katex.min.js"></script>
+    <script src="markee-app://app/vendor/katex/auto-render.min.js"></script>
+    <script src="markee-app://app/vendor/mermaid/mermaid.min.js"></script>
+    <script>
+        if (window.mermaid) {
+            window.dispatchEvent(new Event("markee:mermaid-ready"));
+        }
+    </script>
+</head>
+<body>
+    <article id="content" class="markdown-body"></article>
+    <div id="toast" hidden></div>
+    <script src="markee-app://app/app.js"></script>
+</body>
+</html>

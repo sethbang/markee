@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# markee — open a Markdown file in Markee.app
+# Usage: markee [file.md]
+# If no file is given, just brings the app to the foreground.
+
+set -euo pipefail
+
+APP_BUNDLE_ID="com.markee.preview"
+
+if [ $# -eq 0 ]; then
+    open -b "$APP_BUNDLE_ID" || open -a Markee
+    exit 0
+fi
+
+target="$1"
+
+# Resolve to absolute path (realpath isn't on macOS by default)
+if [ -e "$target" ]; then
+    abs="$(cd "$(dirname "$target")" && pwd)/$(basename "$target")"
+else
+    echo "markee: file not found: $target" >&2
+    exit 1
+fi
+
+# Try by bundle id first (works even when the app is in a non-standard location),
+# fall back to opening by app name.
+if open -b "$APP_BUNDLE_ID" "$abs" 2>/dev/null; then
+    exit 0
+fi
+exec open -a Markee "$abs"
