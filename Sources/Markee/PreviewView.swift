@@ -15,17 +15,30 @@ struct PreviewView: View {
     }
 
     private var placeholder: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "doc.richtext")
-                .font(.system(size: 48))
-                .foregroundStyle(.secondary)
-            Text("No file open").font(.title3).foregroundStyle(.secondary)
-            Text("Use File ▸ Open… or drop a Markdown file on the Dock icon.")
-                .foregroundStyle(.tertiary)
-                .multilineTextAlignment(.center)
+        VStack(spacing: 0) {
+            MarkeeTitlebar(
+                fileName: nil,
+                isOutlineVisible: false,
+                onToggleOutline: {}
+            )
+            VStack(spacing: 12) {
+                Image(systemName: "doc.richtext")
+                    .font(.system(size: 48))
+                    .foregroundStyle(.secondary)
+                Text("No file open").font(.title3).foregroundStyle(.secondary)
+                Text("Use File ▸ Open… or drop a Markdown file on the Dock icon.")
+                    .foregroundStyle(.tertiary)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(NSColor.windowBackgroundColor))
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(NSColor.windowBackgroundColor))
+        .ignoresSafeArea(.container, edges: .top)
+        .background(WindowAccessor { window in
+            window.titlebarAppearsTransparent = true
+            window.titleVisibility = .hidden
+            window.styleMask.insert(.fullSizeContentView)
+        })
     }
 }
 
@@ -37,36 +50,45 @@ private struct PreviewContent: View {
     }
 
     var body: some View {
-        HSplitView {
-            if controller.showOutline {
-                OutlineSidebar(controller: controller)
-                    .frame(minWidth: 180, idealWidth: 220, maxWidth: 360)
-            }
-            ZStack(alignment: .top) {
-                WebViewRepresentable(controller: controller)
-                if let msg = controller.errorBanner {
-                    ErrorBanner(message: msg) {
-                        controller.errorBanner = nil
-                    }
-                    .padding(.top, 6).padding(.horizontal, 12)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                }
-            }
-            .frame(minWidth: 320)
-        }
-        .toolbar {
-            ToolbarItem(placement: .navigation) {
-                Button {
+        VStack(spacing: 0) {
+            MarkeeTitlebar(
+                fileName: controller.fileURL.lastPathComponent,
+                isOutlineVisible: controller.showOutline,
+                onToggleOutline: {
                     withAnimation(.easeInOut(duration: 0.15)) {
                         controller.showOutline.toggle()
                     }
-                } label: {
-                    Image(systemName: "sidebar.left")
                 }
-                .help("Toggle outline")
+            )
+            HSplitView {
+                if controller.showOutline {
+                    OutlineSidebar(controller: controller)
+                        .frame(minWidth: 180, idealWidth: 220, maxWidth: 360)
+                }
+                ZStack(alignment: .top) {
+                    WebViewRepresentable(controller: controller)
+                    if let msg = controller.errorBanner {
+                        ErrorBanner(message: msg) {
+                            controller.errorBanner = nil
+                        }
+                        .padding(.top, 6).padding(.horizontal, 12)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+                }
+                .frame(minWidth: 320)
             }
         }
-        .navigationTitle(controller.fileURL.lastPathComponent)
+        .ignoresSafeArea(.container, edges: .top)
+        .background(WindowAccessor { window in
+            configureWindow(window)
+        })
+    }
+
+    private func configureWindow(_ window: NSWindow) {
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.styleMask.insert(.fullSizeContentView)
+        window.isMovableByWindowBackground = false
     }
 }
 
