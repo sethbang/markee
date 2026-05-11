@@ -55,16 +55,16 @@ private struct PreviewContent: View {
                 fileName: controller.fileURL.lastPathComponent,
                 isOutlineVisible: controller.showOutline,
                 onToggleOutline: {
-                    withAnimation(.easeInOut(duration: 0.15)) {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
                         controller.showOutline.toggle()
                     }
                 }
             )
-            HSplitView {
-                if controller.showOutline {
-                    OutlineSidebar(controller: controller)
-                        .frame(minWidth: 180, idealWidth: 220, maxWidth: 360)
-                }
+            HStack(spacing: 0) {
+                OutlineSidebar(controller: controller)
+                    .frame(width: controller.showOutline ? 220 : 0)
+                    .opacity(controller.showOutline ? 1 : 0)
+                    .clipped()
                 ZStack(alignment: .top) {
                     WebViewRepresentable(controller: controller)
                     if let msg = controller.errorBanner {
@@ -75,7 +75,7 @@ private struct PreviewContent: View {
                         .transition(.move(edge: .top).combined(with: .opacity))
                     }
                 }
-                .frame(minWidth: 320)
+                .frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .ignoresSafeArea(.container, edges: .top)

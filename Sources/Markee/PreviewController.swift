@@ -142,7 +142,7 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
         // the visual switch only matters for the key window since others aren't visible-key.
         if NSApp.keyWindow?.contentViewController?.view.window === webView.window?.windowController?.window
             || webView.window?.isKeyWindow == true {
-            withAnimation(.easeInOut(duration: 0.15)) {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
                 showOutline.toggle()
             }
         }
