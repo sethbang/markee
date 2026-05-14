@@ -3,7 +3,10 @@ APP_BUNDLE := $(APP_NAME).app
 BIN := .build/release/$(APP_NAME)
 CONFIG := release
 
-.PHONY: all build app run clean fetch-vendor install-cli icon test test-swift test-js
+INSTALLED_BUNDLE := /Applications/$(APP_BUNDLE)
+VENDOR_SENTINEL := Resources/web/vendor/.fetched
+
+.PHONY: all build app run clean fetch-vendor install install-cli icon test test-swift test-js
 
 all: app
 
@@ -13,7 +16,15 @@ build:
 icon:
 	@./scripts/build-icon.sh
 
-app: build icon
+# Sentinel-based vendor fetch: first build pulls libs, subsequent builds skip.
+# `make clean` nukes the whole vendor tree to force a refetch.
+$(VENDOR_SENTINEL):
+	@./scripts/fetch-vendor.sh
+	@touch $@
+
+fetch-vendor: $(VENDOR_SENTINEL)
+
+app: $(VENDOR_SENTINEL) build icon
 	rm -rf $(APP_BUNDLE)
 	mkdir -p $(APP_BUNDLE)/Contents/MacOS
 	mkdir -p $(APP_BUNDLE)/Contents/Resources
@@ -22,15 +33,27 @@ app: build icon
 	cp Resources/AppIcon.icns $(APP_BUNDLE)/Contents/Resources/AppIcon.icns
 	cp -R Resources/web $(APP_BUNDLE)/Contents/Resources/
 	cp -R Resources/cli $(APP_BUNDLE)/Contents/Resources/
+	cp LICENSE $(APP_BUNDLE)/Contents/Resources/LICENSE
+	cp THIRD-PARTY-NOTICES.md $(APP_BUNDLE)/Contents/Resources/THIRD-PARTY-NOTICES.md
 	# Ad-hoc codesign so WKWebView and TCC don't barf
 	codesign --force --deep --sign - $(APP_BUNDLE) 2>/dev/null || true
 	@echo "Built $(APP_BUNDLE)"
+	@if [ -L "$(INSTALLED_BUNDLE)" ] || [ -d "$(INSTALLED_BUNDLE)" ]; then \
+		echo "Syncing to $(INSTALLED_BUNDLE)..."; \
+		rm -rf "$(INSTALLED_BUNDLE)"; \
+		cp -R $(APP_BUNDLE) "$(INSTALLED_BUNDLE)"; \
+		/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister -f "$(INSTALLED_BUNDLE)"; \
+	fi
+
+install: app
+	@osascript -e 'tell application "Markee" to quit' 2>/dev/null || true
+	rm -rf "$(INSTALLED_BUNDLE)"
+	cp -R $(APP_BUNDLE) "$(INSTALLED_BUNDLE)"
+	/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister -f "$(INSTALLED_BUNDLE)"
+	@echo "Installed $(INSTALLED_BUNDLE)"
 
 run: app
 	open $(APP_BUNDLE)
-
-fetch-vendor:
-	@./scripts/fetch-vendor.sh
 
 install-cli: app
 	@if [ -w /usr/local/bin ]; then \
@@ -51,4 +74,4 @@ test-js:
 
 clean:
 	swift package clean
-	rm -rf .build $(APP_BUNDLE)
+	rm -rf .build $(APP_BUNDLE) Resources/web/vendor

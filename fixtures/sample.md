@@ -1,9 +1,9 @@
 ---
-title: Macdown Sample
-author: macdown
+title: Markee Sample
+author: markee
 ---
 
-# Macdown Sample
+# Markee Sample
 
 A quick fixture covering the v1 feature set.
 
@@ -59,7 +59,7 @@ $$
 ```mermaid
 graph LR
     A[Edit .md] -->|save| B(FSEvents)
-    B --> C{Macdown}
+    B --> C{Markee}
     C --> D[Re-render]
     D --> A
 ```
@@ -77,11 +77,3 @@ Markdown
 
 WKWebView
 :   Apple's modern WebView, used here for rendering.
-
-
-## Added by file watcher smoke test
-
-This paragraph was appended at 05:31:26 to test live re-render.
-
-
-## Atomic save test (05:31:40)

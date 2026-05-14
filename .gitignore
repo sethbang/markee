@@ -5,7 +5,6 @@ build/
 
 # App bundles (built artifacts)
 Markee.app/
-Macdown.app/
 
 # Generated icon (built from AppIcon.svg by scripts/build-icon.sh)
 Resources/AppIcon.icns
@@ -19,5 +18,14 @@ Resources/web/vendor/
 
 # Claude Code session state
 .claude/
+.superpowers/
+
+# Internal design specs / AI-collaboration notes — kept private
+docs/superpowers/
+
+# Failed self-signing experiment from May 2026 — kept local for reference.
+# See CLAUDE.md "Known issues blocking public release" for why this doesn't
+# work (Gatekeeper requires Apple's CA chain, not a trusted self-signed cert).
+scripts/make-signing-cert.sh
 
 .DS_Store

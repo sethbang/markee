@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-test:
+    name: Build + test on macOS
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache vendored JS/CSS
+        uses: actions/cache@v4
+        with:
+          path: Resources/web/vendor
+          key: vendor-${{ hashFiles('scripts/fetch-vendor.sh') }}
+
+      - name: Fetch vendor (no-op if cached)
+        run: make fetch-vendor
+
+      - name: Show toolchain
+        run: |
+          xcode-select -p
+          swift --version
+          node --version
+
+      - name: Test
+        run: make test
+
+      - name: Build app bundle
+        run: make app
+
+      - name: Verify bundle layout
+        run: |
+          test -x Markee.app/Contents/MacOS/Markee
+          test -f Markee.app/Contents/Info.plist
+          test -f Markee.app/Contents/Resources/LICENSE
+          test -f Markee.app/Contents/Resources/THIRD-PARTY-NOTICES.md
+          test -d Markee.app/Contents/Resources/web/vendor
+
+      - name: Upload .app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Markee.app-${{ github.sha }}
+          path: Markee.app
+          if-no-files-found: error
