@@ -242,3 +242,49 @@ h3 { font-size: 1.15rem; line-height: 1.3; }
   z-index: -1;
   pointer-events: none;
 }
+
+/* ---- Why Markee band ----------------------------------------------------- */
+.why {
+  padding: 72px 0;
+  background: var(--surface-2);
+  border-top: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.why-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 36px;
+}
+@media (max-width: 880px) {
+  .why-grid { grid-template-columns: 1fr; gap: 28px; }
+}
+
+.why-card h3 { margin: 14px 0 8px; }
+.why-card p {
+  color: var(--fg-muted);
+  font-size: 0.97rem;
+  line-height: 1.65;
+  margin: 0;
+}
+
+.why-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px; height: 38px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+kbd {
+  display: inline-block;
+  padding: 1px 6px;
+  font-family: ui-monospace, "SF Mono", monospace;
+  font-size: 0.82em;
+  background: var(--surface-3);
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  color: var(--fg-strong);
+}
