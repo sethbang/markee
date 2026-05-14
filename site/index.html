@@ -102,6 +102,47 @@
       </div>
     </div>
   </section>
+
+  <section id="features" class="features">
+    <div class="container">
+
+      <header class="section-header">
+        <p class="kicker">Features</p>
+        <h2>Built for the way developers actually read Markdown.</h2>
+      </header>
+
+      <div class="feature-row">
+        <figure class="feature-art">
+          <img src="img/feature-math.png" alt="Zoomed view of Markee showing a KaTeX display equation next to a Mermaid diagram." width="1600" height="900">
+        </figure>
+        <div class="feature-copy">
+          <h3>Math and diagrams, rendered in the WebView</h3>
+          <p>KaTeX for inline and display equations, Mermaid for graphs and sequence diagrams, highlight.js for syntax. Every renderer is vendored at build time and runs locally — no network, no telemetry.</p>
+        </div>
+      </div>
+
+      <div class="feature-row feature-row-reverse">
+        <figure class="feature-art">
+          <img src="img/feature-outline.png" alt="Zoomed view of Markee's outline sidebar with one heading row highlighted in accent orange." width="1000" height="900">
+        </figure>
+        <div class="feature-copy">
+          <h3>An outline that tracks where you are</h3>
+          <p>The sidebar always knows the current heading — driven by an IntersectionObserver inside the WebView posting back to the SwiftUI host. Toggle the outline with <kbd>⌘⌥\</kbd> and click any row to jump.</p>
+        </div>
+      </div>
+
+      <div class="feature-row">
+        <figure class="feature-art">
+          <img src="img/feature-editor.png" alt="Right-click context menu on an outline row showing 'Open at this Heading in Editor' and 'Open in Editor' options." width="1100" height="700">
+        </figure>
+        <div class="feature-copy">
+          <h3>Open at any heading, in your editor</h3>
+          <p>Press <kbd>⌥⌘E</kbd> or right-click an outline row to jump your editor to that heading's source line. Markee auto-detects Cursor, VS Code, Zed, Sublime, TextMate, MacVim, and Helix. Override with <code>defaults write com.markee.preview editor "&lt;name&gt;"</code>.</p>
+        </div>
+      </div>
+
+    </div>
+  </section>
 </main>
 
 <script src="script.js" defer></script>
