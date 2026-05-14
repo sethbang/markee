@@ -71,7 +71,7 @@ final class SchemeHandlerTests: XCTestCase {
         // doc root pointing at it. Before the fix this resolved to the
         // outside file and got served.
         let secret = outsideDir.appendingPathComponent("secret.txt")
-        try "leaked".data(using: .utf8)!.write(to: secret)
+        try Data("leaked".utf8).write(to: secret)
 
         let symlink = tempDir.appendingPathComponent("link.txt")
         try FileManager.default.createSymbolicLink(at: symlink, withDestinationURL: secret)

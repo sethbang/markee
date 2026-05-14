@@ -6,10 +6,35 @@ on:
   pull_request:
     branches: [main]
 
+# Cancel in-progress runs when a PR is updated. Stale builds against an old
+# commit aren't useful and burn CI minutes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  lint:
+    name: SwiftLint
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SwiftLint
+        run: brew install swiftlint
+
+      - name: Lint
+        run: swiftlint lint --strict Sources Tests
+
   build-test:
-    name: Build + test on macOS
-    runs-on: macos-latest
+    name: Build + test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    # Test against the oldest supported macOS (LSMinimumSystemVersion is 13)
+    # and the current image. macos-13 catches platform-API regressions early;
+    # macos-14 reflects what most users run.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-13, macos-14]
     steps:
       - uses: actions/checkout@v4
 
@@ -17,7 +42,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: Resources/web/vendor
-          key: vendor-${{ hashFiles('scripts/fetch-vendor.sh') }}
+          key: vendor-${{ runner.os }}-${{ hashFiles('scripts/fetch-vendor.sh') }}
 
       - name: Fetch vendor (no-op if cached)
         run: make fetch-vendor
@@ -45,6 +70,6 @@ jobs:
       - name: Upload .app artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Markee.app-${{ github.sha }}
+          name: Markee.app-${{ matrix.os }}-${{ github.sha }}
           path: Markee.app
           if-no-files-found: error

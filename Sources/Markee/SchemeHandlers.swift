@@ -57,7 +57,7 @@ final class BundleSchemeHandler: NSObject, WKURLSchemeHandler {
                 task.didFailWithError(URLError(.cannotParseResponse)); return
             }
             task.didReceive(response)
-            task.didReceive("Not found: \(fileURL.path)".data(using: .utf8) ?? Data())
+            task.didReceive(Data("Not found: \(fileURL.path)".utf8))
             task.didFinish()
         }
     }
@@ -73,7 +73,7 @@ final class BundleSchemeHandler: NSObject, WKURLSchemeHandler {
             task.didFailWithError(URLError(.cannotParseResponse)); return
         }
         task.didReceive(response)
-        task.didReceive(message.data(using: .utf8) ?? Data())
+        task.didReceive(Data(message.utf8))
         task.didFinish()
     }
 }
@@ -132,7 +132,7 @@ final class DocSchemeHandler: NSObject, WKURLSchemeHandler {
             task.didFailWithError(URLError(.cannotParseResponse)); return
         }
         task.didReceive(response)
-        task.didReceive(message.data(using: .utf8) ?? Data())
+        task.didReceive(Data(message.utf8))
         task.didFinish()
     }
 }

@@ -1,0 +1,97 @@
+name: Release
+
+# Triggered by pushing a tag like v0.2.0. Builds Markee.app from the tagged
+# commit, zips it, and publishes a GitHub Release with the zip attached and
+# the matching CHANGELOG.md section as the release body.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write  # needed to create releases
+
+jobs:
+  release:
+    name: Build + publish Markee.app
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SwiftLint
+        run: brew install swiftlint
+
+      - name: Lint
+        run: swiftlint lint --strict Sources Tests
+
+      - name: Cache vendored JS/CSS
+        uses: actions/cache@v4
+        with:
+          path: Resources/web/vendor
+          key: vendor-${{ runner.os }}-${{ hashFiles('scripts/fetch-vendor.sh') }}
+
+      - name: Fetch vendor (no-op if cached)
+        run: make fetch-vendor
+
+      - name: Test
+        run: make test
+
+      - name: Build app bundle
+        run: make app
+
+      - name: Verify bundle layout
+        run: |
+          test -x Markee.app/Contents/MacOS/Markee
+          test -f Markee.app/Contents/Resources/LICENSE
+          test -f Markee.app/Contents/Resources/THIRD-PARTY-NOTICES.md
+
+      - name: Verify Info.plist version matches tag
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PLIST_VERSION=$(defaults read "$PWD/Markee.app/Contents/Info" CFBundleShortVersionString)
+          echo "Tag: $TAG_VERSION, Info.plist: $PLIST_VERSION"
+          if [ "$TAG_VERSION" != "$PLIST_VERSION" ]; then
+            echo "::error::Tag $TAG_VERSION does not match Info.plist version $PLIST_VERSION. Bump Resources/Info.plist before tagging."
+            exit 1
+          fi
+
+      - name: Zip Markee.app
+        run: |
+          zip -r -y Markee.app.zip Markee.app
+          ls -la Markee.app.zip
+
+      - name: Extract changelog notes for this version
+        id: changelog
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          # awk through CHANGELOG.md: when we hit `## [VERSION]`, start
+          # printing; when we hit the next `## [`, stop.
+          NOTES=$(awk -v ver="$VERSION" '
+            $0 ~ "^## \\[" ver "\\]" { flag=1; next }
+            flag && /^## \[/ { exit }
+            flag { print }
+          ' CHANGELOG.md)
+          if [ -z "$(printf "%s" "$NOTES" | tr -d "[:space:]")" ]; then
+            NOTES="See [CHANGELOG.md](CHANGELOG.md) for details."
+          fi
+          {
+            echo "notes<<CHANGELOG_EOF"
+            printf "%s\n" "$NOTES"
+            echo ""
+            echo "---"
+            echo ""
+            echo "**First launch:** Markee is ad-hoc codesigned, not yet notarized. Right-click \`Markee.app\` → **Open** → **Open** the first time, or run \`xattr -dr com.apple.quarantine Markee.app\`."
+            echo "CHANGELOG_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          body: ${{ steps.changelog.outputs.notes }}
+          files: Markee.app.zip
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          fail_on_unmatched_files: true
