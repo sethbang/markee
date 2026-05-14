@@ -342,3 +342,56 @@ kbd {
   line-height: 1.65;
   margin: 0;
 }
+
+/* ---- Install ------------------------------------------------------------- */
+.install {
+  background: var(--surface-2);
+  padding: 96px 0;
+  border-top: 1px solid var(--hairline);
+}
+.install-wrap { max-width: 780px; margin: 0 auto; }
+
+.install-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 36px;
+}
+.install-steps li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 24px;
+  align-items: start;
+}
+
+.install-num {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.install-body h3 { font-size: 1.15rem; margin-bottom: 8px; }
+.install-body p { color: var(--fg-muted); margin: 0 0 12px; }
+.install-body .btn { margin-top: 8px; }
+
+.install-options {
+  margin: 0 0 12px;
+  padding-left: 20px;
+  color: var(--fg-muted);
+}
+.install-options li { margin: 6px 0; }
+
+.install-source {
+  margin-top: 48px;
+  text-align: center;
+  color: var(--fg-muted);
+  font-size: 0.95rem;
+}

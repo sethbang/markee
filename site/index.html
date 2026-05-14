@@ -138,6 +138,44 @@
 
     </div>
   </section>
+
+  <section id="install" class="install">
+    <div class="container install-wrap">
+
+      <header class="section-header">
+        <p class="kicker">Install</p>
+        <h2>Two steps. No Homebrew tap, no notarization wait.</h2>
+      </header>
+
+      <ol class="install-steps">
+        <li>
+          <div class="install-num">1</div>
+          <div class="install-body">
+            <h3>Download <code>Markee.app.zip</code> from the latest release</h3>
+            <p>Unzip it, drag <code>Markee.app</code> to <code>/Applications</code>.</p>
+            <a class="btn btn-primary" href="https://github.com/sethbang/markee/releases/latest">Download v0.2.0</a>
+          </div>
+        </li>
+        <li>
+          <div class="install-num">2</div>
+          <div class="install-body">
+            <h3>First launch — clear the quarantine flag</h3>
+            <p>Markee is ad-hoc signed, not yet notarized with an Apple Developer ID. On first launch macOS will warn you. Two ways past it:</p>
+            <ul class="install-options">
+              <li><strong>Right-click → Open</strong> in Finder, then click <strong>Open</strong> in the dialog. Once is enough.</li>
+              <li><strong>Or</strong>, in Terminal:</li>
+            </ul>
+            <pre><code>xattr -dr com.apple.quarantine /Applications/Markee.app</code></pre>
+          </div>
+        </li>
+      </ol>
+
+      <p class="install-source">
+        Prefer to build it yourself? <a href="https://github.com/sethbang/markee#from-source">From-source instructions on GitHub</a> — it's three Make targets.
+      </p>
+
+    </div>
+  </section>
 </main>
 
 <script src="script.js" defer></script>
