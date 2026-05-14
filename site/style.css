@@ -1,0 +1,122 @@
+/* ============================================================================
+   markee.sbang.dev — Soft Modern landing page.
+   Light + dark via prefers-color-scheme; tokens mirror the app's theme.css.
+   ============================================================================ */
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fonts/inter-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("fonts/inter-600.woff2") format("woff2");
+}
+
+:root {
+  color-scheme: light dark;
+
+  /* Light tokens — match Resources/web/theme.css */
+  --surface: #fafbfc;
+  --surface-2: #f1f2f5;
+  --surface-3: #eef0f3;
+  --fg: #2b2d34;
+  --fg-strong: #0f1014;
+  --fg-muted: #5a5c64;
+  --fg-dim: #a5a7af;
+  --accent: #a85428;
+  --accent-soft: rgba(168, 84, 40, 0.07);
+  --accent-glow: rgba(168, 84, 40, 0.22);
+  --hairline: rgba(0, 0, 0, 0.06);
+  --shadow-card: 0 12px 32px rgba(15, 16, 20, 0.08), 0 2px 6px rgba(15, 16, 20, 0.04);
+
+  --max-width: 1180px;
+  --radius-card: 12px;
+  --radius-button: 8px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface: #1c1d22;
+    --surface-2: #16171b;
+    --surface-3: #26272d;
+    --fg: #cfd1d8;
+    --fg-strong: #f4f5f8;
+    --fg-muted: #9ea0a8;
+    --fg-dim: #52545d;
+    --accent: #f3a26e;
+    --accent-soft: rgba(243, 162, 110, 0.05);
+    --accent-glow: rgba(243, 162, 110, 0.18);
+    --hairline: rgba(255, 255, 255, 0.04);
+    --shadow-card: 0 16px 40px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3);
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--surface);
+  color: var(--fg);
+  font-family: "Inter", -apple-system, "SF Pro Text", system-ui, sans-serif;
+  font-size: 17px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
+}
+
+img { max-width: 100%; height: auto; display: block; }
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 120ms ease;
+}
+a:hover { border-bottom-color: var(--accent); }
+
+code, pre {
+  font-family: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+  font-size: 0.92em;
+}
+code {
+  background: var(--surface-3);
+  padding: 0.12em 0.4em;
+  border-radius: 4px;
+  color: var(--accent);
+}
+pre {
+  background: var(--surface-3);
+  padding: 16px 20px;
+  border-radius: 10px;
+  overflow-x: auto;
+  line-height: 1.55;
+}
+pre code { background: transparent; padding: 0; color: var(--fg); }
+
+h1, h2, h3 {
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--fg-strong);
+  margin: 0;
+}
+h1 { font-size: clamp(2.4rem, 4.5vw, 3.6rem); line-height: 1.05; }
+h2 { font-size: clamp(1.6rem, 2.5vw, 2.1rem); line-height: 1.15; }
+h3 { font-size: 1.15rem; line-height: 1.3; }
+
+.container {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 0 28px;
+}
+
+.section { padding: 88px 0; }
+@media (max-width: 768px) {
+  .section { padding: 56px 0; }
+}
