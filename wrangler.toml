@@ -1,0 +1,10 @@
+# Cloudflare Workers Static Assets config — deploys /site as a static site.
+# The Cloudflare dashboard runs `npx wrangler deploy` on every push to main,
+# which reads this file and uploads everything under [assets].directory.
+
+name = "markee"
+compatibility_date = "2025-04-01"
+
+[assets]
+directory = "./site"
+not_found_handling = "404-page"
