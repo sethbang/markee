@@ -120,3 +120,52 @@ h3 { font-size: 1.15rem; line-height: 1.3; }
 @media (max-width: 768px) {
   .section { padding: 56px 0; }
 }
+
+/* ---- Site header --------------------------------------------------------- */
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
+  backdrop-filter: saturate(180%) blur(14px);
+  -webkit-backdrop-filter: saturate(180%) blur(14px);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.site-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 64px;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--accent);
+  border-bottom: none;
+}
+.brand-name {
+  font-weight: 600;
+  font-size: 1.05rem;
+  color: var(--fg-strong);
+  letter-spacing: -0.005em;
+}
+
+.site-nav {
+  display: flex;
+  gap: 26px;
+}
+.site-nav a {
+  color: var(--fg-muted);
+  font-size: 0.95rem;
+  font-weight: 500;
+  border-bottom: none;
+}
+.site-nav a:hover { color: var(--fg-strong); }
+
+@media (max-width: 540px) {
+  .site-nav a:nth-child(3) { display: none; } /* hide "Changelog" link on phone widths */
+  .site-nav { gap: 16px; }
+}
