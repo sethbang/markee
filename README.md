@@ -5,6 +5,8 @@ the moment you save. **Editor-agnostic** — keep using Vim, VS Code, Cursor,
 Zed, JetBrains, Sublime, or whatever else you already love; let Markee handle
 the preview.
 
+**Website:** [markee.sbang.dev](https://markee.sbang.dev)
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/window-dark.png">
