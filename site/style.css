@@ -417,3 +417,19 @@ kbd {
   border-bottom: none;
 }
 .footer-nav a:hover { color: var(--fg-strong); }
+
+/* ---- Reveal-on-scroll ---------------------------------------------------- */
+.reveal {
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 500ms ease, transform 500ms ease;
+}
+.reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* Respect users who don't want motion. */
+@media (prefers-reduced-motion: reduce) {
+  .reveal { opacity: 1; transform: none; transition: none; }
+}
