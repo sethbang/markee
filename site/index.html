@@ -38,7 +38,30 @@
 </header>
 
 <main>
-  <!-- Sections land in subsequent tasks. -->
+  <section class="hero">
+    <div class="container hero-row">
+      <div class="hero-copy">
+        <h1>Live&nbsp;Markdown<br>Preview for&nbsp;macOS</h1>
+        <p class="hero-sub">
+          Editor-agnostic. Watches your file and re-renders the moment you save.
+          Keep your editor — let Markee handle the preview.
+        </p>
+        <div class="hero-ctas">
+          <a class="btn btn-primary" href="https://github.com/sethbang/markee/releases/latest">Download v0.2.0</a>
+          <a class="btn btn-ghost" href="https://github.com/sethbang/markee">View on GitHub</a>
+        </div>
+        <p class="hero-meta">Requires macOS&nbsp;13+ · Apple&nbsp;Silicon · MIT-licensed</p>
+      </div>
+      <div class="hero-art">
+        <div class="hero-glow" aria-hidden="true"></div>
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="img/window-dark.png">
+          <source media="(prefers-color-scheme: light)" srcset="img/window-light.png">
+          <img src="img/window-light.png" alt="Markee window showing a Markdown file with outline sidebar, KaTeX equation, syntax-highlighted code, and a Mermaid diagram." width="1600" height="1100">
+        </picture>
+      </div>
+    </div>
+  </section>
 </main>
 
 <script src="script.js" defer></script>
