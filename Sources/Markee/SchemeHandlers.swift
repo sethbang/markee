@@ -17,21 +17,23 @@ final class BundleSchemeHandler: NSObject, WKURLSchemeHandler {
         guard let url = urlSchemeTask.request.url else {
             urlSchemeTask.didFailWithError(URLError(.badURL)); return
         }
-        // Strip leading slash and host
-        var path = url.path
-        while path.hasPrefix("/") { path.removeFirst() }
-        let fileURL = webRoot.appendingPathComponent(path)
-        serve(fileURL: fileURL, task: urlSchemeTask)
+        guard let candidate = resolveSandboxed(root: webRoot, requestPath: url.path) else {
+            fail(task: urlSchemeTask, status: 403, message: "Forbidden"); return
+        }
+        serve(fileURL: candidate, task: urlSchemeTask)
     }
 
     func webView(_ webView: WKWebView, stop urlSchemeTask: WKURLSchemeTask) {}
 
     private func serve(fileURL: URL, task: WKURLSchemeTask) {
+        guard let requestURL = task.request.url else {
+            task.didFailWithError(URLError(.badURL)); return
+        }
         do {
             let data = try Data(contentsOf: fileURL)
             let mime = mimeType(for: fileURL.pathExtension)
-            let response = HTTPURLResponse(
-                url: task.request.url!,
+            guard let response = HTTPURLResponse(
+                url: requestURL,
                 statusCode: 200,
                 httpVersion: "HTTP/1.1",
                 headerFields: [
@@ -39,21 +41,40 @@ final class BundleSchemeHandler: NSObject, WKURLSchemeHandler {
                     "Content-Length": String(data.count),
                     "Access-Control-Allow-Origin": "*",
                 ]
-            )!
+            ) else {
+                task.didFailWithError(URLError(.cannotParseResponse)); return
+            }
             task.didReceive(response)
             task.didReceive(data)
             task.didFinish()
         } catch {
-            let response = HTTPURLResponse(
-                url: task.request.url!,
+            guard let response = HTTPURLResponse(
+                url: requestURL,
                 statusCode: 404,
                 httpVersion: "HTTP/1.1",
                 headerFields: ["Content-Type": "text/plain"]
-            )!
+            ) else {
+                task.didFailWithError(URLError(.cannotParseResponse)); return
+            }
             task.didReceive(response)
             task.didReceive("Not found: \(fileURL.path)".data(using: .utf8) ?? Data())
             task.didFinish()
         }
+    }
+
+    private func fail(task: WKURLSchemeTask, status: Int, message: String) {
+        guard let requestURL = task.request.url,
+              let response = HTTPURLResponse(
+                  url: requestURL,
+                  statusCode: status,
+                  httpVersion: "HTTP/1.1",
+                  headerFields: ["Content-Type": "text/plain"]
+              ) else {
+            task.didFailWithError(URLError(.cannotParseResponse)); return
+        }
+        task.didReceive(response)
+        task.didReceive(message.data(using: .utf8) ?? Data())
+        task.didFinish()
     }
 }
 
@@ -74,18 +95,12 @@ final class DocSchemeHandler: NSObject, WKURLSchemeHandler {
         guard let url = urlSchemeTask.request.url else {
             urlSchemeTask.didFailWithError(URLError(.badURL)); return
         }
-        var path = url.path
-        while path.hasPrefix("/") { path.removeFirst() }
-        let decoded = path.removingPercentEncoding ?? path
-        let candidate = docRoot.appendingPathComponent(decoded).standardizedFileURL
-        // Sandbox: only serve paths inside docRoot
-        let rootPath = docRoot.standardizedFileURL.path
-        guard candidate.path.hasPrefix(rootPath) else {
+        guard let candidate = resolveSandboxed(root: docRoot, requestPath: url.path) else {
             fail(task: urlSchemeTask, status: 403, message: "Forbidden"); return
         }
         do {
             let data = try Data(contentsOf: candidate)
-            let response = HTTPURLResponse(
+            guard let response = HTTPURLResponse(
                 url: url,
                 statusCode: 200,
                 httpVersion: "HTTP/1.1",
@@ -93,7 +108,9 @@ final class DocSchemeHandler: NSObject, WKURLSchemeHandler {
                     "Content-Type": mimeType(for: candidate.pathExtension),
                     "Content-Length": String(data.count),
                 ]
-            )!
+            ) else {
+                urlSchemeTask.didFailWithError(URLError(.cannotParseResponse)); return
+            }
             urlSchemeTask.didReceive(response)
             urlSchemeTask.didReceive(data)
             urlSchemeTask.didFinish()
@@ -105,16 +122,40 @@ final class DocSchemeHandler: NSObject, WKURLSchemeHandler {
     func webView(_ webView: WKWebView, stop urlSchemeTask: WKURLSchemeTask) {}
 
     private func fail(task: WKURLSchemeTask, status: Int, message: String) {
-        let response = HTTPURLResponse(
-            url: task.request.url!,
-            statusCode: status,
-            httpVersion: "HTTP/1.1",
-            headerFields: ["Content-Type": "text/plain"]
-        )!
+        guard let requestURL = task.request.url,
+              let response = HTTPURLResponse(
+                  url: requestURL,
+                  statusCode: status,
+                  httpVersion: "HTTP/1.1",
+                  headerFields: ["Content-Type": "text/plain"]
+              ) else {
+            task.didFailWithError(URLError(.cannotParseResponse)); return
+        }
         task.didReceive(response)
         task.didReceive(message.data(using: .utf8) ?? Data())
         task.didFinish()
     }
+}
+
+/// Resolve a request path against `root` and confirm the result stays inside.
+/// Returns nil on any escape — `..`, percent-encoded `%2e%2e`, absolute paths,
+/// symlinks pointing out, or boundary-attack siblings (`/notes_sibling`
+/// against root `/notes`).
+///
+/// Path is URL-decoded once, then appended to root, then symlink-resolved on
+/// both sides. The boundary check uses a trailing slash so the sibling-dir
+/// attack is blocked. The exact-equal allowance covers the root-itself case
+/// (rare but possible if a request asks for the root directory).
+func resolveSandboxed(root: URL, requestPath: String) -> URL? {
+    var path = requestPath
+    while path.hasPrefix("/") { path.removeFirst() }
+    let decoded = path.removingPercentEncoding ?? path
+    let candidate = root.appendingPathComponent(decoded).resolvingSymlinksInPath()
+    let rootResolvedPath = root.resolvingSymlinksInPath().path
+    let boundary = rootResolvedPath + "/"
+    if candidate.path == rootResolvedPath { return candidate }
+    if candidate.path.hasPrefix(boundary) { return candidate }
+    return nil
 }
 
 func mimeType(for ext: String) -> String {

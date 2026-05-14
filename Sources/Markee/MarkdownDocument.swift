@@ -3,12 +3,11 @@ import UniformTypeIdentifiers
 
 extension UTType {
     static let markdown: UTType = UTType(importedAs: "net.daringfireball.markdown", conformingTo: .plainText)
-    static let commonmark: UTType = UTType(importedAs: "org.commonmark.markdown", conformingTo: .plainText)
 }
 
 struct MarkdownDocument: FileDocument {
     static var readableContentTypes: [UTType] {
-        [.markdown, .commonmark, .plainText]
+        [.markdown, .plainText]
     }
 
     static var writableContentTypes: [UTType] { [] }

@@ -29,6 +29,10 @@ struct MarkeeApp: App {
                     NotificationCenter.default.post(name: .exportHTML, object: nil)
                 }
                 .keyboardShortcut("E", modifiers: [.command])
+                Button("Open in Editor at Current Heading") {
+                    NotificationCenter.default.post(name: .openInEditor, object: nil)
+                }
+                .keyboardShortcut("E", modifiers: [.command, .option])
             }
         }
     }
@@ -37,11 +41,16 @@ struct MarkeeApp: App {
 extension Notification.Name {
     static let toggleOutline = Notification.Name("MarkeeToggleOutline")
     static let exportHTML = Notification.Name("MarkeeExportHTML")
+    static let openInEditor = Notification.Name("MarkeeOpenInEditor")
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    // Stay alive when no windows: matches standard macOS doc-based-app convention
+    // (TextEdit, Preview, etc.) and avoids quitting during the brief zero-window
+    // transition when SwiftUI's File ▸ Open dialog dismisses before the new
+    // document window appears.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        true
+        false
     }
 
     static func installCLI() {

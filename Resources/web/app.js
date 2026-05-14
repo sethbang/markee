@@ -159,13 +159,26 @@
         // Per-render slug counter for heading-id de-duplication
         const slugCount = new Map();
 
+        // Strip YAML front matter (`---\n...\n---\n`) before rendering.
+        // Count the lines we strip so heading source-line numbers stay
+        // accurate against the on-disk file.
+        let src = String(payload.source || "");
+        src = src.replace(/^﻿/, "");
+        let frontMatterLines = 0;
+        const fmMatch = src.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n/);
+        if (fmMatch) {
+            frontMatterLines = (fmMatch[0].match(/\n/g) || []).length;
+            src = src.slice(fmMatch[0].length);
+        }
+
+        // Parse → tokens (with line maps) → render, instead of md.render(),
+        // so we can pull heading source-line numbers off the tokens.
+        let tokens;
         let html;
         try {
-            // Strip YAML front matter (`---\n...\n---\n`) before rendering
-            let src = String(payload.source || "");
-            src = src.replace(/^﻿/, "");
-            src = src.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "");
-            html = md.render(src);
+            const env = {};
+            tokens = md.parse(src, env);
+            html = md.renderer.render(tokens, md.options, env);
         } catch (err) {
             const msg = "Markdown render error: " + (err && err.message ? err.message : String(err));
             post("error", { message: msg });
@@ -175,15 +188,26 @@
 
         article.innerHTML = html;
 
+        // Walk tokens for heading source lines (matched positionally to DOM headings).
+        const headingLines = [];
+        for (let i = 0; i < tokens.length; i++) {
+            const t = tokens[i];
+            if (t.type === "heading_open" && t.map) {
+                headingLines.push(t.map[0] + frontMatterLines);
+            }
+        }
+
         // Assign ids to headings + build outline
         const items = [];
         const headingEls = Array.from(article.querySelectorAll("h1, h2, h3, h4, h5, h6"));
-        headingEls.forEach((h) => {
+        headingEls.forEach((h, i) => {
             const level = parseInt(h.tagName.substring(1), 10);
             const title = h.textContent || "";
             const id = h.id || slugify(title, slugCount);
             h.id = id;
-            items.push({ id, level, title });
+            const item = { id, level, title };
+            if (i < headingLines.length) item.line = headingLines[i];
+            items.push(item);
         });
         post("outline", { items });
 

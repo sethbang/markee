@@ -5,6 +5,7 @@ struct OutlineEntry: Identifiable, Hashable {
     let id: String        // heading slug / anchor
     let level: Int        // 1..6
     let title: String
+    let line: Int?        // 0-indexed source line; nil if JS didn't supply one
 }
 
 @MainActor
@@ -60,6 +61,9 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
         NotificationCenter.default.addObserver(
             self, selector: #selector(handleExportHTML),
             name: .exportHTML, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleOpenInEditor),
+            name: .openInEditor, object: nil)
     }
 
     deinit {
@@ -148,6 +152,29 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
         }
     }
 
+    @objc private func handleOpenInEditor() {
+        guard webView.window?.isKeyWindow == true else { return }
+        let line = currentHeadingLine()
+        openInEditor(atLine: line)
+    }
+
+    /// Looks up the source line of the currently-active heading, if any.
+    private func currentHeadingLine() -> Int? {
+        guard let id = currentHeadingID else { return nil }
+        return outline.first(where: { $0.id == id })?.line
+    }
+
+    /// Launch the user's external editor at `line` (0-indexed) in the current file.
+    /// Pass `nil` to open without a line target.
+    func openInEditor(atLine line: Int?) {
+        switch EditorLauncher.open(file: fileURL, line: line) {
+        case .success:
+            break
+        case .failure(let err):
+            self.errorBanner = err.message
+        }
+    }
+
     @objc private func handleExportHTML() {
         guard webView.window?.isKeyWindow == true else { return }
         let panel = NSSavePanel()
@@ -191,7 +218,8 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
                     guard let id = d["id"] as? String,
                           let level = d["level"] as? Int,
                           let title = d["title"] as? String else { return nil }
-                    return OutlineEntry(id: id, level: level, title: title)
+                    let line = d["line"] as? Int
+                    return OutlineEntry(id: id, level: level, title: title, line: line)
                 }
             }
         case "error":
@@ -261,7 +289,15 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
             decisionHandler(.allow); return
         }
         if navigationAction.navigationType == .linkActivated {
-            NSWorkspace.shared.open(url)
+            // Allowlist only safe schemes. `javascript:`, `file://`, `vscode://`,
+            // and other custom schemes can leak data or trigger unintended
+            // actions in handler apps; cancel and ignore.
+            let allowed: Set<String> = ["http", "https", "mailto"]
+            if let scheme = url.scheme?.lowercased(), allowed.contains(scheme) {
+                NSWorkspace.shared.open(url)
+            } else {
+                self.errorBanner = "Blocked link with unsupported scheme: \(url.scheme ?? "?")"
+            }
             decisionHandler(.cancel); return
         }
         decisionHandler(.allow)

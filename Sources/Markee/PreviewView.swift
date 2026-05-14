@@ -172,6 +172,15 @@ private struct OutlineRow: View {
         }
         .onHover { isHovered = $0 }
         .help(entry.title)
+        .contextMenu {
+            Button("Open at this Heading in Editor") {
+                controller.openInEditor(atLine: entry.line)
+            }
+            .disabled(entry.line == nil)
+            Button("Open in Editor") {
+                controller.openInEditor(atLine: nil)
+            }
+        }
     }
 
     private var leadingIndent: CGFloat {
