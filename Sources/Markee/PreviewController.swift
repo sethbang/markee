@@ -14,6 +14,9 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
     @Published var errorBanner: String? = nil
     @Published var showOutline: Bool = false
     @Published var currentHeadingID: String? = nil
+    @Published var showFindBar: Bool = false
+    @Published var findQuery: String = ""
+    @Published var findNotFound: Bool = false
 
     let webView: WKWebView
     let bundleHandler = BundleSchemeHandler()
@@ -64,6 +67,12 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
         NotificationCenter.default.addObserver(
             self, selector: #selector(handleOpenInEditor),
             name: .openInEditor, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleFind),
+            name: .findInPreview, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handlePrint),
+            name: .printPreview, object: nil)
     }
 
     deinit {
@@ -158,6 +167,41 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
         openInEditor(atLine: line)
     }
 
+    /// Reveal the in-app find bar. macOS WKWebView has no built-in find UI, so
+    /// PreviewView's FindBar drives webView.find(_:configuration:) directly.
+    @objc private func handleFind() {
+        guard webView.window?.isKeyWindow == true else { return }
+        showFindBar = true
+    }
+
+    func findNext() { runFind(backwards: false) }
+    func findPrevious() { runFind(backwards: true) }
+
+    func closeFind() {
+        showFindBar = false
+        findNotFound = false
+    }
+
+    private func runFind(backwards: Bool) {
+        guard !findQuery.isEmpty else { findNotFound = false; return }
+        let config = WKFindConfiguration()
+        config.backwards = backwards
+        config.wraps = true
+        config.caseSensitive = false
+        webView.find(findQuery, configuration: config) { [weak self] result in
+            self?.findNotFound = !result.matchFound
+        }
+    }
+
+    /// Open the system print panel for the rendered preview. The panel's PDF
+    /// menu ("Save as PDF") gives print-to-PDF for free.
+    @objc private func handlePrint() {
+        guard webView.window?.isKeyWindow == true, let window = webView.window else { return }
+        let op = webView.printOperation(with: NSPrintInfo.shared)
+        op.view?.frame = webView.bounds
+        op.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
+    }
+
     /// Looks up the source line of the currently-active heading, if any.
     private func currentHeadingLine() -> Int? {
         guard let id = currentHeadingID else { return nil }
@@ -182,12 +226,22 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
         panel.nameFieldStringValue = fileURL.deletingPathExtension().lastPathComponent + ".html"
         panel.begin { [weak self] response in
             guard response == .OK, let url = panel.url, let self else { return }
-            self.webView.evaluateJavaScript("window.markee && window.markee.exportStandalone();") { value, err in
-                if let err {
-                    self.errorBanner = "Export failed: \(err.localizedDescription)"
+            // exportStandalone is async (it fetches+inlines images), so it
+            // returns a Promise. evaluateJavaScript can't await one — it hands
+            // back the Promise object, which WKWebView can't bridge to Swift
+            // ("unsupported type"). callAsyncJavaScript awaits it for us.
+            Task { @MainActor in
+                let value: Any?
+                do {
+                    value = try await self.webView.callAsyncJavaScript(
+                        "return window.markee ? await window.markee.exportStandalone() : null;",
+                        contentWorld: .page
+                    )
+                } catch {
+                    self.errorBanner = "Export failed: \(error.localizedDescription)"
                     return
                 }
-                guard let html = value as? String else {
+                guard let html = value as? String, !html.isEmpty else {
                     self.errorBanner = "Export returned no content"
                     return
                 }
