@@ -1,5 +1,9 @@
-# Markee
 
+
+<div>
+  <img src="Resources/AppIcon.svg" width="64" height="64" alt="Markee app icon">
+  <h1 align="center">Markee</h1>
+</div>
 A native macOS Markdown preview app that watches a file on disk and re-renders
 the moment you save. **Editor-agnostic** — keep using Vim, VS Code, Cursor,
 Zed, JetBrains, Sublime, or whatever else you already love; let Markee handle

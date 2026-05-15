@@ -20,13 +20,14 @@
     });
   });
 
-  // Reveal-on-scroll. Bail to "always visible" on browsers without
-  // IntersectionObserver (which is essentially nobody in 2026, but the
-  // fallback is free).
-  if (!("IntersectionObserver" in window)) {
-    document.querySelectorAll(".reveal").forEach((el) => el.classList.add("is-visible"));
-    return;
-  }
+  // Reveal-on-scroll. Base CSS keeps .reveal elements visible; we add
+  // .reveal-armed to opt in to the hidden-then-fade animation, then
+  // .is-visible on intersect. If IntersectionObserver isn't available, we
+  // simply never arm — content stays visible.
+  if (!("IntersectionObserver" in window)) return;
+
+  const targets = document.querySelectorAll(".reveal");
+  targets.forEach((el) => el.classList.add("reveal-armed"));
 
   const observer = new IntersectionObserver(
     (entries) => {
@@ -40,5 +41,5 @@
     { rootMargin: "0px 0px -80px 0px", threshold: 0.05 }
   );
 
-  document.querySelectorAll(".reveal").forEach((el) => observer.observe(el));
+  targets.forEach((el) => observer.observe(el));
 })();
