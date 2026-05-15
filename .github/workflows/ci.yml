@@ -28,13 +28,13 @@ jobs:
   build-test:
     name: Build + test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    # Test against the oldest supported macOS (LSMinimumSystemVersion is 13)
-    # and the current image. macos-13 catches platform-API regressions early;
-    # macos-14 reflects what most users run.
+    # GitHub retired the macos-13 hosted runner, so we build on the two
+    # current images. The macOS 13 floor (LSMinimumSystemVersion) is enforced
+    # at compile time, not by the runner OS.
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-13, macos-14]
+        os: [macos-14, macos-15]
     steps:
       - uses: actions/checkout@v4
 
