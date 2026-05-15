@@ -67,11 +67,17 @@ private struct PreviewContent: View {
                     .clipped()
                 ZStack(alignment: .top) {
                     WebViewRepresentable(controller: controller)
+                    if controller.showFindBar {
+                        FindBar(controller: controller)
+                            .padding(.top, 6).padding(.trailing, 12)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
                     if let msg = controller.errorBanner {
                         ErrorBanner(message: msg) {
                             controller.errorBanner = nil
                         }
-                        .padding(.top, 6).padding(.horizontal, 12)
+                        .padding(.top, controller.showFindBar ? 44 : 6).padding(.horizontal, 12)
                         .transition(.move(edge: .top).combined(with: .opacity))
                     }
                 }
@@ -244,6 +250,56 @@ private struct OutlineRow: View {
             Color.primary.opacity(0.03)
         } else {
             Color.clear
+        }
+    }
+}
+
+private struct FindBar: View {
+    @ObservedObject var controller: PreviewController
+    @FocusState private var fieldFocused: Bool
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+            TextField("Find", text: $controller.findQuery)
+                .textFieldStyle(.plain)
+                .font(.system(size: 12))
+                .frame(width: 170)
+                .focused($fieldFocused)
+                .onSubmit { controller.findNext() }
+                .onChange(of: controller.findQuery) { _ in controller.findNext() }
+            if controller.findNotFound {
+                Text("Not found")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+            Divider().frame(height: 14)
+            Button { controller.findPrevious() } label: {
+                Image(systemName: "chevron.up").font(.system(size: 10, weight: .semibold))
+            }
+            .buttonStyle(.plain)
+            .help("Previous match")
+            Button { controller.findNext() } label: {
+                Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold))
+            }
+            .buttonStyle(.plain)
+            .help("Next match")
+            Button { controller.closeFind() } label: {
+                Image(systemName: "xmark").font(.system(size: 10, weight: .semibold))
+            }
+            .buttonStyle(.plain)
+            .help("Close find bar")
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(.tertiary.opacity(0.4)))
+        .shadow(color: .black.opacity(0.1), radius: 6, y: 2)
+        .onExitCommand { controller.closeFind() }
+        .onAppear {
+            DispatchQueue.main.async { fieldFocused = true }
         }
     }
 }

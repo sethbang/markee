@@ -34,6 +34,18 @@ struct MarkeeApp: App {
                 }
                 .keyboardShortcut("E", modifiers: [.command, .option])
             }
+            CommandGroup(replacing: .printItem) {
+                Button("Print…") {
+                    NotificationCenter.default.post(name: .printPreview, object: nil)
+                }
+                .keyboardShortcut("P", modifiers: [.command])
+            }
+            CommandGroup(after: .textEditing) {
+                Button("Find…") {
+                    NotificationCenter.default.post(name: .findInPreview, object: nil)
+                }
+                .keyboardShortcut("F", modifiers: [.command])
+            }
         }
     }
 }
@@ -42,6 +54,8 @@ extension Notification.Name {
     static let toggleOutline = Notification.Name("MarkeeToggleOutline")
     static let exportHTML = Notification.Name("MarkeeExportHTML")
     static let openInEditor = Notification.Name("MarkeeOpenInEditor")
+    static let findInPreview = Notification.Name("MarkeeFindInPreview")
+    static let printPreview = Notification.Name("MarkeePrintPreview")
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
