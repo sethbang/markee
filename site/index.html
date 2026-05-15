@@ -20,8 +20,7 @@
 <header class="site-header">
   <div class="container site-header-row">
     <a href="/" class="brand" aria-label="Markee home">
-      <img class="brand-mark" src="img/app-icon.svg" alt="" width="36" height="36">
-      <span class="brand-name">markee</span>
+      <span class="brand-name">Markee</span>
     </a>
     <nav class="site-nav">
       <a href="#features">Features</a>
@@ -36,23 +35,31 @@
   <section class="hero">
     <div class="container hero-row">
       <div class="hero-copy">
-        <h1>Live&nbsp;Markdown<br>Preview for&nbsp;macOS</h1>
-        <p class="hero-sub">
-          Editor-agnostic. Watches your file and re-renders the moment you save.
-          Keep your editor — let Markee handle the preview.
-        </p>
-        <div class="hero-ctas">
-          <a class="btn btn-primary" href="https://github.com/sethbang/markee/releases/latest">Download v0.2.0</a>
-          <a class="btn btn-ghost" href="https://github.com/sethbang/markee">View on GitHub</a>
+        <div class="hero-intro">
+          <h1>Live&nbsp;Markdown<br>Preview for&nbsp;macOS</h1>
+          <p class="hero-sub">
+            Editor-agnostic. Watches your file and re-renders the moment you save.
+            Keep your editor — let Markee handle the preview.
+          </p>
         </div>
-        <p class="hero-meta">Requires macOS&nbsp;13+ · Apple&nbsp;Silicon · MIT-licensed</p>
+        <div class="hero-install">
+          <div class="hero-install-brand">
+            <img class="hero-install-icon" src="img/app-icon.svg" alt="" width="180" height="180">
+            <p class="hero-install-name">Markee.app</p>
+          </div>
+          <div class="hero-install-ctas">
+            <a class="btn btn-primary" href="https://github.com/sethbang/markee/releases/latest">Download</a>
+            <a class="btn btn-ghost" href="https://github.com/sethbang/markee">GitHub</a>
+          </div>
+          <p class="hero-install-meta">v0.2.0 · macOS&nbsp;13+ · Apple&nbsp;Silicon · MIT</p>
+        </div>
       </div>
       <div class="hero-art">
         <div class="hero-glow" aria-hidden="true"></div>
         <picture>
           <source media="(prefers-color-scheme: dark)" srcset="img/window-dark.png">
           <source media="(prefers-color-scheme: light)" srcset="img/window-light.png">
-          <img src="img/window-light.png" alt="Markee window showing a Markdown file with outline sidebar, KaTeX equation, syntax-highlighted code, and a Mermaid diagram." width="1600" height="1100">
+          <img src="img/window-light.png" alt="Markee window showing a Markdown file with outline sidebar, KaTeX equation, syntax-highlighted code, and a Mermaid diagram." width="1188" height="1428">
         </picture>
       </div>
     </div>
@@ -69,7 +76,7 @@
               <path d="M19 14l-3 3 1.5 1.5L21 15l-2-1z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
             </svg>
           </div>
-          <h3>Lives in your editor's shadow</h3>
+          <h2>Lives in your editor's shadow</h2>
           <p>Use Vim, Cursor, Zed, VS Code — whatever you already love. Markee watches the file on disk and updates the preview the moment you save. Nothing to learn.</p>
         </div>
 
@@ -80,7 +87,7 @@
               <path d="M7 13l2 2 4-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
           </div>
-          <h3>Renders the whole stack</h3>
+          <h2>Renders the whole stack</h2>
           <p>GitHub-flavored Markdown, KaTeX math, Mermaid diagrams, highlight.js code, footnotes, definition lists, task lists, YAML front matter. All offline, all in a sandboxed WebView.</p>
         </div>
 
@@ -90,7 +97,7 @@
               <path d="M4 4h7v7H4z M13 4h7v7h-7z M4 13h7v7H4z M13 13h7v7h-7z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
             </svg>
           </div>
-          <h3>Open at any heading</h3>
+          <h2>Open at any heading</h2>
           <p>Press <kbd>⌥⌘E</kbd> or right-click an outline row to jump your editor to that heading's source line. Auto-detects Cursor, Code, Zed, Sublime, TextMate, MacVim, and Helix.</p>
         </div>
 
@@ -108,7 +115,7 @@
 
       <div class="feature-row reveal">
         <figure class="feature-art">
-          <img src="img/feature-math.png" alt="Zoomed view of Markee showing a KaTeX display equation next to a Mermaid diagram." width="1600" height="900">
+          <img src="img/feature-math.png" alt="Zoomed view of Markee showing a KaTeX display equation next to a Mermaid diagram." width="1000" height="753">
         </figure>
         <div class="feature-copy">
           <h3>Math and diagrams, rendered in the WebView</h3>
@@ -118,7 +125,7 @@
 
       <div class="feature-row feature-row-reverse reveal">
         <figure class="feature-art">
-          <img src="img/feature-outline.png" alt="Zoomed view of Markee's outline sidebar with one heading row highlighted in accent orange." width="1000" height="900">
+          <img src="img/feature-outline.png" alt="Zoomed view of Markee's outline sidebar with one heading row highlighted in accent orange." width="1000" height="367">
         </figure>
         <div class="feature-copy">
           <h3>An outline that tracks where you are</h3>
@@ -128,7 +135,7 @@
 
       <div class="feature-row reveal">
         <figure class="feature-art">
-          <img src="img/feature-editor.png" alt="Right-click context menu on an outline row showing 'Open at this Heading in Editor' and 'Open in Editor' options." width="1100" height="700">
+          <img src="img/feature-editor.png" alt="Right-click context menu on an outline row showing 'Open at this Heading in Editor' and 'Open in Editor' options." width="480" height="372">
         </figure>
         <div class="feature-copy">
           <h3>Open at any heading, in your editor</h3>
