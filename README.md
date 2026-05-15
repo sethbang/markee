@@ -170,7 +170,7 @@ inside the WebView; Swift just streams the file's source into
 
 ## Status
 
-v0.2.0 — Soft Modern UI/UX redesign + Open in Editor + security hardening.
+v0.3.0 — Find (⌘F) and Print / Save-as-PDF (⌘P), plus an Export HTML fix.
 See [CHANGELOG.md](CHANGELOG.md) for the full release history. Not yet signed
 with a Developer ID or notarized.
 

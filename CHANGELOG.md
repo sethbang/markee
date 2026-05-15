@@ -4,6 +4,30 @@ All notable changes to Markee are documented here. Format roughly follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] — 2026-05-15
+
+### Added
+- **Find in preview (⌘F)** — an in-app find bar. macOS `WKWebView` has no
+  built-in find UI, so Markee ships its own: find-as-you-type, ↩ / chevrons
+  to step through matches, wrap-around, a "Not found" indicator, and ⎋ to
+  dismiss. Driven by `WKWebView.find(_:configuration:)`.
+- **Print / Save as PDF (⌘P)** — opens the system print panel via
+  `WKWebView.printOperation(with:)`; the panel's PDF menu covers
+  print-to-PDF.
+
+### Fixed
+- **Export Standalone HTML (⌘E)** failed with *"JavaScript execution
+  returned a result of an unsupported type."* `exportStandalone()` is async
+  (it inlines images as data URIs), so it returns a Promise;
+  `evaluateJavaScript` cannot await one. The bridge now uses
+  `callAsyncJavaScript`, which resolves the Promise before returning to Swift.
+
+### Changed
+- CI builds on `macos-14` + `macos-15`; the retired `macos-13` hosted
+  runner was queueing jobs indefinitely.
+- Bundle version bumped to `0.3.0` (CFBundleShortVersionString) / `3`
+  (CFBundleVersion).
+
 ## [0.2.0] — 2026-05-14
 
 ### Added
