@@ -379,6 +379,10 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
                 pendingRender = nil
                 render(source: pending)
             }
+            // Load-bearing: a window opened after another window changed zoom
+            // never received that .zoomDidChange broadcast, and a broadcast
+            // that arrived before this page's JS was ready was a silent no-op.
+            // Re-reading the persisted level here covers both cases.
             applyZoom()
         case "outline":
             if let items = body["items"] as? [[String: Any]] {

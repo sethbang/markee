@@ -29,6 +29,13 @@ struct MarkeeApp: App {
                     NotificationCenter.default.post(name: .zoomIn, object: nil)
                 }
                 .keyboardShortcut("+", modifiers: [.command])
+                // Second Zoom In binding: ⌘= (no Shift). The button above is
+                // bound to "+" (⌘⇧= on US layouts); this alias matches the
+                // browser-standard ⌘= so users need not hold Shift.
+                Button("Zoom In") {
+                    NotificationCenter.default.post(name: .zoomIn, object: nil)
+                }
+                .keyboardShortcut("=", modifiers: [.command])
                 Button("Zoom Out") {
                     NotificationCenter.default.post(name: .zoomOut, object: nil)
                 }
