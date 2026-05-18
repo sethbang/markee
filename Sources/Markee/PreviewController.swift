@@ -95,6 +95,18 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
         NotificationCenter.default.addObserver(
             self, selector: #selector(handlePrint),
             name: .printPreview, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleZoomIn),
+            name: .zoomIn, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleZoomOut),
+            name: .zoomOut, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleZoomReset),
+            name: .zoomReset, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleZoomDidChange),
+            name: .zoomDidChange, object: nil)
     }
 
     deinit {
@@ -224,6 +236,48 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
         op.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
     }
 
+    // MARK: - Zoom
+
+    /// UserDefaults key for the single, global zoom level (shared across all
+    /// windows and remembered across launches).
+    private static let zoomDefaultsKey = "MarkeeZoomLevel"
+
+    private static var storedZoom: Double {
+        get { UserDefaults.standard.object(forKey: zoomDefaultsKey) as? Double ?? 1.0 }
+        set { UserDefaults.standard.set(newValue, forKey: zoomDefaultsKey) }
+    }
+
+    @objc private func handleZoomIn() {
+        changeZoom { nextZoom(from: $0, direction: .in) }
+    }
+
+    @objc private func handleZoomOut() {
+        changeZoom { nextZoom(from: $0, direction: .out) }
+    }
+
+    @objc private func handleZoomReset() {
+        changeZoom { _ in 1.0 }
+    }
+
+    /// Compute + persist a new zoom level, then broadcast so every open
+    /// window re-applies it. Only the key window's controller acts.
+    private func changeZoom(_ transform: (Double) -> Double) {
+        guard webView.window?.isKeyWindow == true else { return }
+        Self.storedZoom = transform(Self.storedZoom)
+        NotificationCenter.default.post(name: .zoomDidChange, object: nil)
+    }
+
+    @objc private func handleZoomDidChange() {
+        applyZoom()
+    }
+
+    /// Push the stored zoom level into this window's WebView.
+    private func applyZoom() {
+        webView.evaluateJavaScript(
+            "window.markee && window.markee.setZoom(\(Self.storedZoom));",
+            completionHandler: nil)
+    }
+
     /// Looks up the source line of the currently-active heading, if any.
     private func currentHeadingLine() -> Int? {
         guard let id = currentHeadingID else { return nil }
@@ -288,6 +342,7 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
                 pendingRender = nil
                 render(source: pending)
             }
+            applyZoom()
         case "outline":
             if let items = body["items"] as? [[String: Any]] {
                 self.outline = items.compactMap { d in

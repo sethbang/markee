@@ -23,6 +23,20 @@ struct MarkeeApp: App {
                     NotificationCenter.default.post(name: .toggleOutline, object: nil)
                 }
                 .keyboardShortcut("\\", modifiers: [.command, .option])
+
+                Divider()
+                Button("Zoom In") {
+                    NotificationCenter.default.post(name: .zoomIn, object: nil)
+                }
+                .keyboardShortcut("+", modifiers: [.command])
+                Button("Zoom Out") {
+                    NotificationCenter.default.post(name: .zoomOut, object: nil)
+                }
+                .keyboardShortcut("-", modifiers: [.command])
+                Button("Actual Size") {
+                    NotificationCenter.default.post(name: .zoomReset, object: nil)
+                }
+                .keyboardShortcut("0", modifiers: [.command])
             }
             CommandGroup(after: .saveItem) {
                 Button("Export Standalone HTML…") {
@@ -56,6 +70,10 @@ extension Notification.Name {
     static let openInEditor = Notification.Name("MarkeeOpenInEditor")
     static let findInPreview = Notification.Name("MarkeeFindInPreview")
     static let printPreview = Notification.Name("MarkeePrintPreview")
+    static let zoomIn = Notification.Name("MarkeeZoomIn")
+    static let zoomOut = Notification.Name("MarkeeZoomOut")
+    static let zoomReset = Notification.Name("MarkeeZoomReset")
+    static let zoomDidChange = Notification.Name("MarkeeZoomDidChange")
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
