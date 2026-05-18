@@ -107,6 +107,12 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
         NotificationCenter.default.addObserver(
             self, selector: #selector(handleZoomDidChange),
             name: .zoomDidChange, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleFindNext),
+            name: .findNext, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleFindPrevious),
+            name: .findPrevious, object: nil)
     }
 
     deinit {
@@ -206,6 +212,27 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
     @objc private func handleFind() {
         guard webView.window?.isKeyWindow == true else { return }
         showFindBar = true
+    }
+
+    /// ⌘G — if there is no query yet, just reveal the find bar (same as ⌘F);
+    /// otherwise search forward with the last query, bar visible or not.
+    @objc private func handleFindNext() {
+        guard webView.window?.isKeyWindow == true else { return }
+        if findQuery.isEmpty {
+            showFindBar = true
+        } else {
+            findNext()
+        }
+    }
+
+    /// ⌘⇧G — mirror of handleFindNext, searching backward.
+    @objc private func handleFindPrevious() {
+        guard webView.window?.isKeyWindow == true else { return }
+        if findQuery.isEmpty {
+            showFindBar = true
+        } else {
+            findPrevious()
+        }
     }
 
     func findNext() { runFind(backwards: false) }

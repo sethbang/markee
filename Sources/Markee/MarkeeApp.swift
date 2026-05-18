@@ -59,6 +59,14 @@ struct MarkeeApp: App {
                     NotificationCenter.default.post(name: .findInPreview, object: nil)
                 }
                 .keyboardShortcut("F", modifiers: [.command])
+                Button("Find Next") {
+                    NotificationCenter.default.post(name: .findNext, object: nil)
+                }
+                .keyboardShortcut("G", modifiers: [.command])
+                Button("Find Previous") {
+                    NotificationCenter.default.post(name: .findPrevious, object: nil)
+                }
+                .keyboardShortcut("G", modifiers: [.command, .shift])
             }
         }
     }
@@ -74,6 +82,8 @@ extension Notification.Name {
     static let zoomOut = Notification.Name("MarkeeZoomOut")
     static let zoomReset = Notification.Name("MarkeeZoomReset")
     static let zoomDidChange = Notification.Name("MarkeeZoomDidChange")
+    static let findNext = Notification.Name("MarkeeFindNext")
+    static let findPrevious = Notification.Name("MarkeeFindPrevious")
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
