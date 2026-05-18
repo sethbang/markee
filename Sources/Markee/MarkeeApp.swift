@@ -23,6 +23,33 @@ struct MarkeeApp: App {
                     NotificationCenter.default.post(name: .toggleOutline, object: nil)
                 }
                 .keyboardShortcut("\\", modifiers: [.command, .option])
+
+                Divider()
+                Button("Zoom In") {
+                    NotificationCenter.default.post(name: .zoomIn, object: nil)
+                }
+                .keyboardShortcut("+", modifiers: [.command])
+                // Second Zoom In binding: ⌘= (no Shift). The button above is
+                // bound to "+" (⌘⇧= on US layouts); this alias matches the
+                // browser-standard ⌘= so users need not hold Shift.
+                Button("Zoom In") {
+                    NotificationCenter.default.post(name: .zoomIn, object: nil)
+                }
+                .keyboardShortcut("=", modifiers: [.command])
+                Button("Zoom Out") {
+                    NotificationCenter.default.post(name: .zoomOut, object: nil)
+                }
+                .keyboardShortcut("-", modifiers: [.command])
+                Button("Actual Size") {
+                    NotificationCenter.default.post(name: .zoomReset, object: nil)
+                }
+                .keyboardShortcut("0", modifiers: [.command])
+
+                Divider()
+                Button("Reload") {
+                    NotificationCenter.default.post(name: .reloadFile, object: nil)
+                }
+                .keyboardShortcut("r", modifiers: [.command])
             }
             CommandGroup(after: .saveItem) {
                 Button("Export Standalone HTML…") {
@@ -45,6 +72,14 @@ struct MarkeeApp: App {
                     NotificationCenter.default.post(name: .findInPreview, object: nil)
                 }
                 .keyboardShortcut("F", modifiers: [.command])
+                Button("Find Next") {
+                    NotificationCenter.default.post(name: .findNext, object: nil)
+                }
+                .keyboardShortcut("G", modifiers: [.command])
+                Button("Find Previous") {
+                    NotificationCenter.default.post(name: .findPrevious, object: nil)
+                }
+                .keyboardShortcut("G", modifiers: [.command, .shift])
             }
         }
     }
@@ -56,6 +91,13 @@ extension Notification.Name {
     static let openInEditor = Notification.Name("MarkeeOpenInEditor")
     static let findInPreview = Notification.Name("MarkeeFindInPreview")
     static let printPreview = Notification.Name("MarkeePrintPreview")
+    static let zoomIn = Notification.Name("MarkeeZoomIn")
+    static let zoomOut = Notification.Name("MarkeeZoomOut")
+    static let zoomReset = Notification.Name("MarkeeZoomReset")
+    static let zoomDidChange = Notification.Name("MarkeeZoomDidChange")
+    static let findNext = Notification.Name("MarkeeFindNext")
+    static let findPrevious = Notification.Name("MarkeeFindPrevious")
+    static let reloadFile = Notification.Name("MarkeeReloadFile")
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {

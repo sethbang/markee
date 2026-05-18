@@ -329,11 +329,22 @@ ${cssParts.join("\n\n")}
         return head + clone.outerHTML + foot;
     }
 
+    // ---- zoom ---------------------------------------------------------------
+    // Swift drives zoom by calling window.markee.setZoom(factor). CSS `zoom`
+    // on <html> reflows text and scales code blocks, images, KaTeX, and
+    // Mermaid output uniformly. Invalid/non-positive factors reset to 1.
+    function setZoom(factor) {
+        const f = Number(factor);
+        document.documentElement.style.zoom =
+            (Number.isFinite(f) && f > 0) ? String(f) : "1";
+    }
+
     // ---- expose API ---------------------------------------------------------
     window.markee = {
         render,
         scrollToHeading,
-        exportStandalone
+        exportStandalone,
+        setZoom
     };
 
     // Mermaid is loaded as a module; the inline initializer (or load failure)

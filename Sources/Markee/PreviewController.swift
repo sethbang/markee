@@ -1,6 +1,28 @@
 import SwiftUI
 import WebKit
 
+/// Discrete zoom rungs, browser-style. Zoom commands only ever land the
+/// page on one of these values.
+let zoomSteps: [Double] = [0.5, 0.67, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0]
+
+enum ZoomDirection {
+    case `in`, out
+}
+
+/// Step `current` one rung along `zoomSteps`. Off-ladder inputs snap to the
+/// nearest rung first; the result is clamped at the array bounds.
+func nextZoom(from current: Double, direction: ZoomDirection) -> Double {
+    let nearest = zoomSteps.indices.min(by: {
+        abs(zoomSteps[$0] - current) < abs(zoomSteps[$1] - current)
+    }) ?? 0
+    switch direction {
+    case .in:
+        return zoomSteps[min(nearest + 1, zoomSteps.count - 1)]
+    case .out:
+        return zoomSteps[max(nearest - 1, 0)]
+    }
+}
+
 struct OutlineEntry: Identifiable, Hashable {
     let id: String        // heading slug / anchor
     let level: Int        // 1..6
@@ -73,6 +95,27 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
         NotificationCenter.default.addObserver(
             self, selector: #selector(handlePrint),
             name: .printPreview, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleZoomIn),
+            name: .zoomIn, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleZoomOut),
+            name: .zoomOut, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleZoomReset),
+            name: .zoomReset, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleZoomDidChange),
+            name: .zoomDidChange, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleFindNext),
+            name: .findNext, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleFindPrevious),
+            name: .findPrevious, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleReload),
+            name: .reloadFile, object: nil)
     }
 
     deinit {
@@ -174,6 +217,34 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
         showFindBar = true
     }
 
+    /// ⌘G — if there is no query yet, just reveal the find bar (same as ⌘F);
+    /// otherwise search forward with the last query, bar visible or not.
+    @objc private func handleFindNext() {
+        guard webView.window?.isKeyWindow == true else { return }
+        if findQuery.isEmpty {
+            showFindBar = true
+        } else {
+            findNext()
+        }
+    }
+
+    /// ⌘R — manually re-read and re-render the file. Same path the file
+    /// watcher drives; a fallback for the rare save the watcher misses.
+    @objc private func handleReload() {
+        guard webView.window?.isKeyWindow == true else { return }
+        loadFromDisk(reason: "manual")
+    }
+
+    /// ⌘⇧G — mirror of handleFindNext, searching backward.
+    @objc private func handleFindPrevious() {
+        guard webView.window?.isKeyWindow == true else { return }
+        if findQuery.isEmpty {
+            showFindBar = true
+        } else {
+            findPrevious()
+        }
+    }
+
     func findNext() { runFind(backwards: false) }
     func findPrevious() { runFind(backwards: true) }
 
@@ -200,6 +271,48 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
         let op = webView.printOperation(with: NSPrintInfo.shared)
         op.view?.frame = webView.bounds
         op.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
+    }
+
+    // MARK: - Zoom
+
+    /// UserDefaults key for the single, global zoom level (shared across all
+    /// windows and remembered across launches).
+    private static let zoomDefaultsKey = "MarkeeZoomLevel"
+
+    private static var storedZoom: Double {
+        get { UserDefaults.standard.object(forKey: zoomDefaultsKey) as? Double ?? 1.0 }
+        set { UserDefaults.standard.set(newValue, forKey: zoomDefaultsKey) }
+    }
+
+    @objc private func handleZoomIn() {
+        changeZoom { nextZoom(from: $0, direction: .in) }
+    }
+
+    @objc private func handleZoomOut() {
+        changeZoom { nextZoom(from: $0, direction: .out) }
+    }
+
+    @objc private func handleZoomReset() {
+        changeZoom { _ in 1.0 }
+    }
+
+    /// Compute + persist a new zoom level, then broadcast so every open
+    /// window re-applies it. Only the key window's controller acts.
+    private func changeZoom(_ transform: (Double) -> Double) {
+        guard webView.window?.isKeyWindow == true else { return }
+        Self.storedZoom = transform(Self.storedZoom)
+        NotificationCenter.default.post(name: .zoomDidChange, object: nil)
+    }
+
+    @objc private func handleZoomDidChange() {
+        applyZoom()
+    }
+
+    /// Push the stored zoom level into this window's WebView.
+    private func applyZoom() {
+        webView.evaluateJavaScript(
+            "window.markee && window.markee.setZoom(\(Self.storedZoom));",
+            completionHandler: nil)
     }
 
     /// Looks up the source line of the currently-active heading, if any.
@@ -266,6 +379,11 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
                 pendingRender = nil
                 render(source: pending)
             }
+            // Load-bearing: a window opened after another window changed zoom
+            // never received that .zoomDidChange broadcast, and a broadcast
+            // that arrived before this page's JS was ready was a silent no-op.
+            // Re-reading the persisted level here covers both cases.
+            applyZoom()
         case "outline":
             if let items = body["items"] as? [[String: Any]] {
                 self.outline = items.compactMap { d in
