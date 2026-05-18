@@ -1,6 +1,28 @@
 import SwiftUI
 import WebKit
 
+/// Discrete zoom rungs, browser-style. Zoom commands only ever land the
+/// page on one of these values.
+let zoomSteps: [Double] = [0.5, 0.67, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0]
+
+enum ZoomDirection {
+    case `in`, out
+}
+
+/// Step `current` one rung along `zoomSteps`. Off-ladder inputs snap to the
+/// nearest rung first; the result is clamped at the array bounds.
+func nextZoom(from current: Double, direction: ZoomDirection) -> Double {
+    let nearest = zoomSteps.indices.min(by: {
+        abs(zoomSteps[$0] - current) < abs(zoomSteps[$1] - current)
+    }) ?? 0
+    switch direction {
+    case .in:
+        return zoomSteps[min(nearest + 1, zoomSteps.count - 1)]
+    case .out:
+        return zoomSteps[max(nearest - 1, 0)]
+    }
+}
+
 struct OutlineEntry: Identifiable, Hashable {
     let id: String        // heading slug / anchor
     let level: Int        // 1..6
