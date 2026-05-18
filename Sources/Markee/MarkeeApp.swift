@@ -37,6 +37,12 @@ struct MarkeeApp: App {
                     NotificationCenter.default.post(name: .zoomReset, object: nil)
                 }
                 .keyboardShortcut("0", modifiers: [.command])
+
+                Divider()
+                Button("Reload") {
+                    NotificationCenter.default.post(name: .reloadFile, object: nil)
+                }
+                .keyboardShortcut("r", modifiers: [.command])
             }
             CommandGroup(after: .saveItem) {
                 Button("Export Standalone HTML…") {
@@ -84,6 +90,7 @@ extension Notification.Name {
     static let zoomDidChange = Notification.Name("MarkeeZoomDidChange")
     static let findNext = Notification.Name("MarkeeFindNext")
     static let findPrevious = Notification.Name("MarkeeFindPrevious")
+    static let reloadFile = Notification.Name("MarkeeReloadFile")
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {

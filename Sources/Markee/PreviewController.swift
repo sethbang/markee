@@ -113,6 +113,9 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
         NotificationCenter.default.addObserver(
             self, selector: #selector(handleFindPrevious),
             name: .findPrevious, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleReload),
+            name: .reloadFile, object: nil)
     }
 
     deinit {
@@ -223,6 +226,13 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
         } else {
             findNext()
         }
+    }
+
+    /// ⌘R — manually re-read and re-render the file. Same path the file
+    /// watcher drives; a fallback for the rare save the watcher misses.
+    @objc private func handleReload() {
+        guard webView.window?.isKeyWindow == true else { return }
+        loadFromDisk(reason: "manual")
     }
 
     /// ⌘⇧G — mirror of handleFindNext, searching backward.
