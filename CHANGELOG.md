@@ -4,6 +4,26 @@ All notable changes to Markee are documented here. Format roughly follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] — 2026-05-18
+
+### Added
+- **Zoom (⌘+ / ⌘= / ⌘- / ⌘0)** — resize the rendered preview. Zoom is
+  reflow-based: text re-wraps and code blocks, images, KaTeX, and Mermaid
+  output scale together. The level is one global preference, shared across
+  all open windows and remembered across launches. ⌘+ and ⌘= both zoom in
+  (the latter needs no Shift). Driven through a `window.markee.setZoom()`
+  bridge call applying CSS `zoom`; native `WKWebView.pageZoom` is macOS 14+
+  and the deployment target is macOS 13.
+- **Find Next / Previous (⌘G / ⌘⇧G)** — step through find-bar matches with
+  the standard macOS shortcuts, with matching Edit-menu items. ⌘G with no
+  active query opens the find bar.
+- **Reload (⌘R)** — manually re-read and re-render the file from disk; a
+  fallback for the rare save the file watcher does not catch.
+
+### Changed
+- Bundle version bumped to `0.4.0` (CFBundleShortVersionString) / `4`
+  (CFBundleVersion).
+
 ## [0.3.0] — 2026-05-15
 
 ### Added

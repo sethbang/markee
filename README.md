@@ -170,7 +170,7 @@ inside the WebView; Swift just streams the file's source into
 
 ## Status
 
-v0.3.0 — Find (⌘F) and Print / Save-as-PDF (⌘P), plus an Export HTML fix.
+v0.4.0 — Zoom (⌘+/⌘-/⌘0), Find Next/Previous (⌘G/⌘⇧G), and Reload (⌘R).
 See [CHANGELOG.md](CHANGELOG.md) for the full release history. Not yet signed
 with a Developer ID or notarized.
 
