@@ -8,7 +8,7 @@ CONFIG := release
 INSTALLED_BUNDLE := /Applications/$(APP_BUNDLE)
 VENDOR_SENTINEL := Resources/web/vendor/.fetched
 
-.PHONY: all build app run clean fetch-vendor install install-cli icon test test-swift test-js
+.PHONY: all build app run notarize clean fetch-vendor install install-cli icon test test-swift test-js
 
 all: app
 
@@ -49,8 +49,9 @@ app: $(VENDOR_SENTINEL) build icon
 	cp $(THUMBNAIL_BIN) $(APP_BUNDLE)/Contents/PlugIns/QuickLookThumbnail.appex/Contents/MacOS/MarkeeQuickLookThumbnail
 	cp Resources/QuickLookThumbnail-Info.plist $(APP_BUNDLE)/Contents/PlugIns/QuickLookThumbnail.appex/Contents/Info.plist
 	cp -R Resources/web $(APP_BUNDLE)/Contents/PlugIns/QuickLookThumbnail.appex/Contents/Resources/
-	# Ad-hoc codesign so WKWebView and TCC don't barf
-	codesign --force --deep --sign - $(APP_BUNDLE) 2>/dev/null || true
+	# Sign the bundle: Developer ID + Hardened Runtime when an identity is
+	# available, ad-hoc otherwise. See scripts/sign-app.sh.
+	./scripts/sign-app.sh $(APP_BUNDLE)
 	@echo "Built $(APP_BUNDLE)"
 	@if [ -L "$(INSTALLED_BUNDLE)" ] || [ -d "$(INSTALLED_BUNDLE)" ]; then \
 		echo "Syncing to $(INSTALLED_BUNDLE)..."; \
@@ -68,6 +69,9 @@ install: app
 
 run: app
 	open $(APP_BUNDLE)
+
+notarize: app
+	./scripts/notarize-app.sh $(APP_BUNDLE)
 
 install-cli: app
 	@if [ -w /usr/local/bin ]; then \
