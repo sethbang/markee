@@ -131,7 +131,7 @@ The Quick Look preview/thumbnail extensions (`Contents/PlugIns/*.appex`) only re
 Markee is distributed as a Developer-ID-signed, notarized app. Both the app and
 its two Quick Look `.appex` extensions are signed with the **Developer ID
 Application** certificate and the Hardened Runtime, then the bundle is notarized
-by Apple and the ticket stapled. The app itself is **not** sandboxed — it watches and writes Markdown files at arbitrary paths. The two Quick Look `.appex` extensions, however, **are** sandboxed (`com.apple.security.app-sandbox` + `com.apple.security.files.user-selected.read-only`, in `Resources/QuickLookExtension.entitlements`): `pkd` refuses to register an unsandboxed Quick Look extension. `sign-app.sh` signs the extensions with those entitlements and the app without.
+by Apple and the ticket stapled. The app itself is **not** sandboxed — it watches and writes Markdown files at arbitrary paths. The two Quick Look `.appex` extensions, however, **are** sandboxed (`Resources/QuickLookExtension.entitlements`): `pkd` refuses to register an unsandboxed Quick Look extension. Their entitlements are `com.apple.security.app-sandbox`, `com.apple.security.files.user-selected.read-only` (to read the previewed file), and `com.apple.security.network.client` — the last is **load-bearing**: without it `WKWebView`'s helper processes crash inside the sandboxed extension and the renderer hangs forever (preview shows an endless spinner). `sign-app.sh` signs the extensions with those entitlements and the app without.
 
 - `scripts/sign-app.sh` signs the bundle inside-out. With a Developer ID
   identity in the keychain it signs Developer ID + Hardened Runtime; with none
