@@ -136,7 +136,7 @@ Resources/web/         HTML/JS/CSS shipped into the bundle
   vendor/              Fetched at build time, not committed
 Resources/cli/markee   Shell launcher
 Resources/AppIcon.svg  Source for the app icon
-scripts/               build-icon.sh, fetch-vendor.sh
+scripts/               build-icon.sh, fetch-vendor.sh, sign-app.sh, notarize-app.sh
 Tests/                 Swift + JS tests
 fixtures/sample.md     Exercises every feature
 docs/demo.md           README hero document

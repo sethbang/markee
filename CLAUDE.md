@@ -32,6 +32,8 @@ make test           # swift test + node --test Tests/util.test.js (both green at
 - `Resources/AppIcon.svg` — source; `Resources/AppIcon.icns` is built (gitignored)
 - `scripts/build-icon.sh` — `sips` + `iconutil` → AppIcon.icns
 - `scripts/fetch-vendor.sh` — pinned downloads from jsdelivr
+- `scripts/sign-app.sh` — Developer ID / ad-hoc bundle signing (used by `make app`)
+- `scripts/notarize-app.sh` — `notarytool` submit + staple (used by `make notarize`)
 - `Tests/MarkeeTests/` — Swift unit tests (`@testable import Markee`)
 - `Tests/util.test.js` — Node `--test` runner over `util.js`
 - `fixtures/sample.md` — exercises every feature
@@ -75,7 +77,6 @@ Visual identity redesign. Integrated window chrome (no system titlebar divider, 
 
 ## Not done
 
-- Apple Developer ID signing / notarization (needed for distribution beyond your machine) — see "Known issues blocking public release" below
 - DMG / Homebrew cask
 - PreviewController test coverage: `toggleTask` drift bailout, line-ending preservation, export-HTML write
 - Print stylesheet (uses screen CSS; usually fine, breaks near page boundaries can be ugly)
@@ -84,6 +85,8 @@ Visual identity redesign. Integrated window chrome (no system titlebar divider, 
 - True MultiMarkdown citation/cross-ref support — deferred; we ship GFM-ish via plugins
 
 ## Known issues blocking public release
+
+*Issues #1 and #4 are resolved by Developer ID notarization (see "Signing & notarization" below). #2 and #3 remain.*
 
 ### 1. Open With picker grays out Markee; not in "Recommended Applications"
 
@@ -97,7 +100,7 @@ Visual identity redesign. Integrated window chrome (no system titlebar divider, 
 
 **Workaround we used during development.** Get Info → Open with → "Other…" → switch dropdown to "All Applications" → navigate to /Applications/Markee.app → it's grayed but still clickable in the file dialog → click Open → Change All. Once. Then it sticks.
 
-**Real fix for public release.** Either:
+**Real fix (done — see "Signing & notarization" below).** It was:
 - Enroll in the Apple Developer Program ($99/yr), get a Developer ID Application cert, codesign with that, notarize. After notarization, `spctl -a` passes and the picker enables Markee normally.
 - Or: ship a tiny first-run helper that writes the LSHandler entries directly to the user's `launchservices.secure.plist` and runs `lsregister`. Avoids the picker entirely but doesn't help discoverability for users who didn't go through the helper.
 
