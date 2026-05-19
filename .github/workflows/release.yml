@@ -1,8 +1,8 @@
 name: Release
 
-# Triggered by pushing a tag like v0.2.0. Builds Markee.app from the tagged
-# commit, zips it, and publishes a GitHub Release with the zip attached and
-# the matching CHANGELOG.md section as the release body.
+# Triggered by pushing a tag like v0.6.0. Builds Markee.app from the tagged
+# commit, Developer-ID-signs and notarizes it, zips it, and publishes a GitHub
+# Release with the zip attached and the matching CHANGELOG.md section as body.
 
 on:
   push:
@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   release:
-    name: Build + publish Markee.app
+    name: Build + notarize + publish Markee.app
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
@@ -37,7 +37,32 @@ jobs:
       - name: Test
         run: make test
 
-      - name: Build app bundle
+      - name: Import Developer ID certificate
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          CERT_PATH="$RUNNER_TEMP/markee-cert.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/markee-signing.keychain-db"
+          KEYCHAIN_PW=$(openssl rand -base64 24)
+
+          echo "$MACOS_CERT_P12" | base64 --decode > "$CERT_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -k "$KEYCHAIN_PATH" \
+            -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: \
+            -s -k "$KEYCHAIN_PW" "$KEYCHAIN_PATH"
+          # Add our keychain to the search list so codesign/security find it.
+          security list-keychains -d user -s "$KEYCHAIN_PATH" \
+            $(security list-keychains -d user | sed 's/"//g')
+
+          rm -f "$CERT_PATH"
+          echo "MARKEE_KEYCHAIN=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+
+      - name: Build app bundle (Developer ID signed)
         run: make app
 
       - name: Verify bundle layout
@@ -45,6 +70,8 @@ jobs:
           test -x Markee.app/Contents/MacOS/Markee
           test -f Markee.app/Contents/Resources/LICENSE
           test -f Markee.app/Contents/Resources/THIRD-PARTY-NOTICES.md
+          test -d Markee.app/Contents/PlugIns/QuickLookPreview.appex
+          test -d Markee.app/Contents/PlugIns/QuickLookThumbnail.appex
 
       - name: Verify Info.plist version matches tag
         run: |
@@ -56,17 +83,27 @@ jobs:
             exit 1
           fi
 
+      - name: Notarize and staple
+        env:
+          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+        run: |
+          KEY_PATH="$RUNNER_TEMP/notary-key.p8"
+          echo "$NOTARY_KEY_P8" | base64 --decode > "$KEY_PATH"
+          export NOTARY_KEY_P8_PATH="$KEY_PATH"
+          ./scripts/notarize-app.sh Markee.app
+          rm -f "$KEY_PATH"
+
       - name: Zip Markee.app
         run: |
-          zip -r -y Markee.app.zip Markee.app
+          ditto -c -k --keepParent Markee.app Markee.app.zip
           ls -la Markee.app.zip
 
       - name: Extract changelog notes for this version
         id: changelog
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          # awk through CHANGELOG.md: when we hit `## [VERSION]`, start
-          # printing; when we hit the next `## [`, stop.
           NOTES=$(awk -v ver="$VERSION" '
             $0 ~ "^## \\[" ver "\\]" { flag=1; next }
             flag && /^## \[/ { exit }
@@ -78,10 +115,6 @@ jobs:
           {
             echo "notes<<CHANGELOG_EOF"
             printf "%s\n" "$NOTES"
-            echo ""
-            echo "---"
-            echo ""
-            echo "**First launch:** Markee is ad-hoc codesigned, not yet notarized. Right-click \`Markee.app\` → **Open** → **Open** the first time, or run \`xattr -dr com.apple.quarantine Markee.app\`."
             echo "CHANGELOG_EOF"
           } >> "$GITHUB_OUTPUT"
 
@@ -95,3 +128,10 @@ jobs:
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
           fail_on_unmatched_files: true
+
+      - name: Clean up signing keychain
+        if: always()
+        run: |
+          if [ -n "${MARKEE_KEYCHAIN:-}" ]; then
+            security delete-keychain "$MARKEE_KEYCHAIN" 2>/dev/null || true
+          fi
