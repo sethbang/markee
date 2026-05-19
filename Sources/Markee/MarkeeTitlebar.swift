@@ -30,7 +30,7 @@ struct MarkeeTitlebar: View {
                     Button(action: onToggleOutline) {
                         Image(systemName: "sidebar.left")
                             .font(.system(size: 14, weight: .regular))
-                            .foregroundStyle(Color.secondary)
+                            .foregroundStyle(toggleIconColor)
                             .frame(width: 24, height: 24)
                             .contentShape(Rectangle())
                     }
@@ -69,6 +69,19 @@ struct MarkeeTitlebar: View {
                 return NSColor(red: 0xcf/255.0, green: 0xd0/255.0, blue: 0xd6/255.0, alpha: 1)
             } else {
                 return NSColor(red: 0x3a/255.0, green: 0x3c/255.0, blue: 0x44/255.0, alpha: 1)
+            }
+        })
+    }
+
+    /// Explicit toggle-icon color. Does NOT use `Color.secondary`: that
+    /// semantic color tracks window active-state and fails to recompute on the
+    /// resign-key → become-key cycle, rendering the glyph transparent.
+    private var toggleIconColor: Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            if appearance.bestMatch(from: [.darkAqua, .vibrantDark, .accessibilityHighContrastDarkAqua]) != nil {
+                return NSColor(red: 0x8c/255.0, green: 0x8e/255.0, blue: 0x97/255.0, alpha: 1)
+            } else {
+                return NSColor(red: 0x6a/255.0, green: 0x6c/255.0, blue: 0x74/255.0, alpha: 1)
             }
         })
     }
