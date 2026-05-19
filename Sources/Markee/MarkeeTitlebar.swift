@@ -73,9 +73,8 @@ struct MarkeeTitlebar: View {
         })
     }
 
-    /// Explicit toggle-icon color. Does NOT use `Color.secondary`: that
-    /// semantic color tracks window active-state and fails to recompute on the
-    /// resign-key → become-key cycle, rendering the glyph transparent.
+    /// Explicit appearance-aware color for the outline-toggle icon, matching
+    /// the titlebar's own `NSColor`-backed color treatment.
     private var toggleIconColor: Color {
         Color(nsColor: NSColor(name: nil) { appearance in
             if appearance.bestMatch(from: [.darkAqua, .vibrantDark, .accessibilityHighContrastDarkAqua]) != nil {
