@@ -4,7 +4,7 @@ import MarkeeKit
 
 /// Quick Look preview principal class. Hosts a `MarkeeKit.WebRenderer`'s
 /// WKWebView and renders the previewed file into it.
-class PreviewViewController: NSViewController, QLPreviewingController {
+final class PreviewViewController: NSViewController, QLPreviewingController {
     private var renderer: WebRenderer?
 
     override func loadView() {
@@ -14,6 +14,9 @@ class PreviewViewController: NSViewController, QLPreviewingController {
     func preparePreviewOfFile(at url: URL,
                               completionHandler handler: @escaping (Error?) -> Void) {
         Task { @MainActor in
+            // The controller may be reused for successive previews; drop the
+            // previous renderer's view before mounting the new one.
+            self.renderer?.webView.removeFromSuperview()
             let renderer = WebRenderer(docRoot: url.deletingLastPathComponent())
             self.renderer = renderer
 
