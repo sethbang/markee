@@ -247,15 +247,11 @@
             } catch (e) { /* non-fatal */ }
         }
 
-        // Mermaid
-        if (window.mermaid) {
-            try {
-                // Reset processed flag on existing diagrams so re-render works
-                article.querySelectorAll("pre.mermaid").forEach((el) => {
-                    el.removeAttribute("data-processed");
-                });
-                window.mermaid.run({ querySelector: "#content pre.mermaid" }).catch(() => {});
-            } catch (e) { /* non-fatal */ }
+        // Mermaid — the 2.5 MB bundle is loaded on demand only when the
+        // document actually contains a diagram. Diagram-free renders never
+        // pay the parse cost (matters most for fresh Quick Look processes).
+        if (article.querySelector("pre.mermaid")) {
+            ensureMermaid(() => runMermaid(article));
         }
 
         // Restore scroll
@@ -274,6 +270,34 @@
     function scrollToHeading(id) {
         const el = document.getElementById(id);
         if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    // ---- lazy Mermaid -------------------------------------------------------
+    let mermaidLoading = false;
+
+    // Inject mermaid.min.js (UMD bundle — not the ESM split build) once, then
+    // invoke `then` after the existing markee:mermaid-ready listener has run
+    // mermaid.initialize(). If a load is already in flight, queue `then`.
+    function ensureMermaid(then) {
+        if (window.mermaid) { then(); return; }
+        window.addEventListener("markee:mermaid-ready", then, { once: true });
+        if (mermaidLoading) return;
+        mermaidLoading = true;
+        const s = document.createElement("script");
+        s.src = "markee-app://app/vendor/mermaid/mermaid.min.js";
+        s.onload = () => { window.dispatchEvent(new Event("markee:mermaid-ready")); };
+        s.onerror = () => { mermaidLoading = false; /* diagrams stay as code */ };
+        document.head.appendChild(s);
+    }
+
+    function runMermaid(article) {
+        if (!window.mermaid) return;
+        try {
+            article.querySelectorAll("pre.mermaid").forEach((el) => {
+                el.removeAttribute("data-processed");
+            });
+            window.mermaid.run({ querySelector: "#content pre.mermaid" }).catch(() => {});
+        } catch (e) { /* non-fatal */ }
     }
 
     // ---- export standalone HTML --------------------------------------------
