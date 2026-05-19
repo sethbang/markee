@@ -116,6 +116,42 @@
       <div class="feature-row reveal">
         <figure class="feature-art">
           <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="img/preview-dark.png" width="1170" height="746">
+            <source media="(prefers-color-scheme: light)" srcset="img/preview-light.png" width="1164" height="742">
+            <img src="img/preview-light.png" alt="A macOS Quick Look window showing a Markdown file rendered by Markee — headings, text, and code — instead of raw source." width="1164" height="742">
+          </picture>
+        </figure>
+        <div class="feature-copy">
+          <h3>Quick Look, fully rendered</h3>
+          <p>Press <kbd>Space</kbd> on any Markdown file in Finder and Markee renders it in place — headings, tables, code, math, and diagrams — instead of showing raw source. It's the same renderer as the app, running in a sandboxed Quick Look extension.</p>
+        </div>
+      </div>
+
+      <div class="feature-row feature-row-reverse reveal">
+        <figure class="feature-art">
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="img/thumbnails-dark.png" width="1078" height="697">
+            <source media="(prefers-color-scheme: light)" srcset="img/thumbnails-light.png" width="1080" height="701">
+            <img src="img/thumbnails-light.png" alt="A Finder window in icon view showing several Markdown files, each with a per-file thumbnail of its rendered content." width="1080" height="701">
+          </picture>
+        </figure>
+        <div class="feature-copy">
+          <h3>At home in Finder</h3>
+          <p>Every <code>.md</code> file gets a per-file thumbnail of its actual rendered content, so a folder of notes is scannable at a glance. Where a thumbnail isn't available, files fall back to a clean, branded Markdown document icon.</p>
+          <figure class="feature-inline">
+            <picture>
+              <source media="(prefers-color-scheme: dark)" srcset="img/icon-dark.png" width="456" height="173">
+              <source media="(prefers-color-scheme: light)" srcset="img/icon-light.png" width="466" height="172">
+              <img src="img/icon-light.png" alt="The Markee Markdown document icon shown at small size — a white page carrying the Markee M mark." width="466" height="172">
+            </picture>
+            <figcaption>The document icon — legible down to 16&nbsp;px.</figcaption>
+          </figure>
+        </div>
+      </div>
+
+      <div class="feature-row reveal">
+        <figure class="feature-art">
+          <picture>
             <source media="(prefers-color-scheme: dark)" srcset="img/feature-math-dark.png" width="1000" height="753">
             <source media="(prefers-color-scheme: light)" srcset="img/feature-math-light.png" width="1000" height="800">
             <img src="img/feature-math-light.png" alt="Zoomed view of Markee showing a KaTeX display equation next to a Mermaid diagram." width="1000" height="800">
@@ -163,7 +199,7 @@
 
       <header class="section-header">
         <p class="kicker">Install</p>
-        <h2>Two steps. No Homebrew tap, no notarization wait.</h2>
+        <h2>Download, drag, open — no Homebrew tap, no Gatekeeper detour.</h2>
       </header>
 
       <ol class="install-steps reveal">
@@ -178,13 +214,8 @@
         <li>
           <div class="install-num">2</div>
           <div class="install-body">
-            <h3>First launch — clear the quarantine flag</h3>
-            <p>Markee is ad-hoc signed, not yet notarized with an Apple Developer ID. On first launch macOS will warn you. Two ways past it:</p>
-            <ul class="install-options">
-              <li><strong>Right-click → Open</strong> in Finder, then click <strong>Open</strong> in the dialog. Once is enough.</li>
-              <li><strong>Or</strong>, in Terminal:</li>
-            </ul>
-            <pre><code>xattr -dr com.apple.quarantine /Applications/Markee.app</code></pre>
+            <h3>Open it</h3>
+            <p>Markee is signed with an Apple Developer ID and notarized by Apple, so it opens with a normal double-click — no Gatekeeper warning, no right-click trick, no Terminal.</p>
           </div>
         </li>
       </ol>
