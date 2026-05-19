@@ -76,3 +76,113 @@ struct GitHubRelease: Sendable {
         self.notes = (obj["body"] as? String) ?? ""
     }
 }
+
+enum UpdaterError: LocalizedError {
+    case badResponse
+    case unparseable
+    case downloadFailed
+    case subprocessFailed
+    case invalidBundle
+
+    var errorDescription: String? {
+        switch self {
+        case .badResponse:      return "GitHub returned an unexpected response."
+        case .unparseable:      return "Couldn't read the release information."
+        case .downloadFailed:   return "The update download failed."
+        case .subprocessFailed: return "Unpacking the update failed."
+        case .invalidBundle:    return "The downloaded update looked invalid."
+        }
+    }
+}
+
+import AppKit
+
+@MainActor
+final class Updater {
+    static let shared = Updater()
+
+    private let repo = "sethbang/markee"
+    private var isRunning = false
+
+    private static let lastCheckKey = "MarkeeLastUpdateCheck"
+    private static let skippedVersionKey = "MarkeeSkippedVersion"
+
+    private init() {}
+
+    static var currentVersionString: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
+    }
+
+    private var currentVersion: AppVersion {
+        AppVersion(Self.currentVersionString) ?? AppVersion("0.0.0")!
+    }
+
+    /// Once-a-day silent launch check. Throttled by a UserDefaults timestamp.
+    func checkOnLaunch() {
+        let now = Date()
+        if let last = UserDefaults.standard.object(forKey: Self.lastCheckKey) as? Date,
+           now.timeIntervalSince(last) < 24 * 60 * 60 {
+            return
+        }
+        UserDefaults.standard.set(now, forKey: Self.lastCheckKey)
+        Task { await check(userInitiated: false) }
+    }
+
+    /// "Check for Updates…" menu action. Always reports its result.
+    func checkForUpdatesMenuAction() {
+        UserDefaults.standard.set(Date(), forKey: Self.lastCheckKey)
+        Task { await check(userInitiated: true) }
+    }
+
+    private func check(userInitiated: Bool) async {
+        guard !isRunning else { return }
+        isRunning = true
+        defer { isRunning = false }
+
+        let release: GitHubRelease
+        do {
+            release = try await Self.fetchLatestRelease(repo: repo)
+        } catch {
+            if userInitiated {
+                presentError(error.localizedDescription)
+            }
+            return
+        }
+
+        guard release.version > currentVersion else {
+            if userInitiated { presentUpToDate() }
+            return
+        }
+
+        if !userInitiated,
+           UserDefaults.standard.string(forKey: Self.skippedVersionKey) == release.tagName {
+            return
+        }
+
+        presentUpdateAvailable(release)
+    }
+
+    nonisolated static func fetchLatestRelease(repo: String) async throws -> GitHubRelease {
+        var request = URLRequest(url: URL(string: "https://api.github.com/repos/\(repo)/releases/latest")!)
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw UpdaterError.badResponse
+        }
+        guard let release = GitHubRelease(json: data) else {
+            throw UpdaterError.unparseable
+        }
+        return release
+    }
+
+    // MARK: - Temporary stubs (replaced in Tasks 7 and 9)
+
+    func presentUpdateAvailable(_ release: GitHubRelease) {}
+    func presentUpToDate() {}
+    func presentError(_ message: String) {}
+    func installUpdate(_ release: GitHubRelease) async {}
+
+    static func storeSkippedVersion(_ tag: String) {
+        UserDefaults.standard.set(tag, forKey: skippedVersionKey)
+    }
+}
