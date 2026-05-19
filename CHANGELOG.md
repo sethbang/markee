@@ -4,6 +4,31 @@ All notable changes to Markee are documented here. Format roughly follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] — 2026-05-18
+
+### Added
+- **Copy Markdown Source (⌘⇧C)** — copy the file's raw Markdown to the
+  clipboard, read fresh from disk. In the File menu and the preview
+  right-click menu.
+- **Reveal in Finder (⌘⇧R)** — reveal the current file in Finder. In the
+  File menu and the preview right-click menu.
+- **In-app updates** — Markee checks GitHub Releases for a newer version on
+  launch (at most once a day) and on demand via *Markee ▸ Check for
+  Updates…*. When a newer release exists it downloads, validates, and
+  installs it, then relaunches — clearing quarantine so there is no repeat
+  Gatekeeper prompt. Falls back to opening the release page in the browser
+  when it cannot replace itself in place.
+
+### Changed
+- Bundle version bumped to `0.5.0` (CFBundleShortVersionString) / `5`
+  (CFBundleVersion).
+
+### Fixed
+- The custom title bar no longer disappears after the window loses and
+  regains focus. AppKit resets `titlebarAppearsTransparent` during window
+  reactivation; the window configuration is now re-applied via KVO
+  whenever that happens.
+
 ## [0.4.0] — 2026-05-18
 
 ### Added
