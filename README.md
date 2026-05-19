@@ -38,6 +38,10 @@ in Editor**, and your editor opens at that line.
 - KaTeX math (inline `$…$` and display `$$…$$`).
 - Syntax highlighting via highlight.js.
 - Mermaid diagrams.
+- **Quick Look** — press Space on a `.md` file in Finder for a fully rendered
+  preview instead of raw text.
+- **Finder thumbnails & document icon** — `.md` files show a thumbnail of
+  their rendered content, and carry a branded Markee document icon.
 - **Interactive task-list checkboxes** that write back to the source file.
 - **Open in Editor at Current Heading** — ⌥⌘E or right-click an outline row
   to jump to that heading's source line in your editor.
@@ -161,7 +165,7 @@ inside the WebView; Swift just streams the file's source into
 
 ## Status
 
-v0.5.0 — see [CHANGELOG.md](CHANGELOG.md) for the full release history.
+v1.0.0 — see [CHANGELOG.md](CHANGELOG.md) for the full release history.
 Developer ID signed and notarized.
 
 ## Contributing

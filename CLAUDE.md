@@ -75,6 +75,15 @@ Watch + rerender, atomic-save aware, scroll preservation, GFM + footnotes + defl
 
 Visual identity redesign. Integrated window chrome (no system titlebar divider, custom 44pt gradient bar, traffic lights kept). Outline sidebar redesigned with H1/H2/H3 indent + live active-section highlight (driven by `currentHeadingID` published from JS IntersectionObserver). Full `theme.css` rewrite with new token palette (`--surface`, `--accent`, etc.), Soft Modern typography, custom task-list checkboxes, faded `<hr>`, lede paragraph after H1. Dark + light themes, system-following via `prefers-color-scheme`. See `docs/superpowers/specs/2026-05-11-ui-ux-redesign-design.md`.
 
+## What's done (v1.0 — Finder integration & notarization)
+
+Quick Look preview + per-file thumbnail extensions — a shared `MarkeeKit`
+renderer behind two `.appex` bundles in `Contents/PlugIns/`. Branded Markdown
+document icon. Mermaid now lazy-loaded (only diagram-bearing documents pay its
+cost). Developer ID code signing + notarization for the app and both
+extensions — see "Signing & notarization". The first publicly distributable
+release.
+
 ## Not done
 
 - DMG / Homebrew cask
