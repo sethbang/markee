@@ -233,7 +233,6 @@
                 if (readOnly) {
                     cb.disabled = true;
                 } else {
-                    cb.disabled = false;
                     cb.addEventListener("click", onTaskToggle);
                 }
             }
