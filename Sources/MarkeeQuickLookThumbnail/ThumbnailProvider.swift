@@ -69,9 +69,14 @@ final class ThumbnailProvider: QLThumbnailProvider {
         await renderer.render(source: source,
                               fileName: fileURL.lastPathComponent,
                               readOnly: true)
+        try Task.checkCancellation()
 
-        // Let layout settle before snapshotting.
+        // Fixed settle delay: render() resolves when the synchronous JS call
+        // returns, but layout — and async Mermaid — may still be in flight.
+        // A diagram-heavy document may therefore thumbnail with diagrams only
+        // partially drawn; an accepted limitation within the 2.5s budget.
         try await Task.sleep(nanoseconds: 200_000_000)
+        try Task.checkCancellation()
 
         let config = WKSnapshotConfiguration()
         config.rect = pageRect
@@ -83,8 +88,10 @@ final class ThumbnailProvider: QLThumbnailProvider {
                     continuation.resume(throwing: error ?? TimeoutError())
                 }
             }
-            _ = window // keep the window alive until the snapshot completes
         }
+        // Keep the offscreen window (which owns the webView's backing store)
+        // alive until the async snapshot above has completed.
+        withExtendedLifetime(window) {}
         return SnapshotBox(image: image)
     }
 
