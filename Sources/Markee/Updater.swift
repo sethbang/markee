@@ -229,6 +229,51 @@ final class Updater {
         }
     }
 
+    // MARK: - Download / stage
+
+    /// Run a subprocess to completion; throw if it exits non-zero.
+    nonisolated static func runProcess(_ launchPath: String, _ args: [String]) throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: launchPath)
+        process.arguments = args
+        try process.run()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else { throw UpdaterError.subprocessFailed }
+    }
+
+    /// Download `Markee.app.zip`, unzip it with `ditto`, and validate the
+    /// result. Returns the URL of the staged, validated `Markee.app`. Runs off
+    /// the main actor — the unzip is blocking work.
+    nonisolated static func downloadAndStage(_ release: GitHubRelease) async throws -> URL {
+        let (tempZip, response) = try await URLSession.shared.download(from: release.zipURL)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw UpdaterError.downloadFailed
+        }
+
+        let work = FileManager.default.temporaryDirectory
+            .appendingPathComponent("markee-update-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
+        let zipURL = work.appendingPathComponent("Markee.app.zip")
+        try FileManager.default.moveItem(at: tempZip, to: zipURL)
+
+        // `ditto` unzips reliably, preserving the bundle's symlinks/structure.
+        try runProcess("/usr/bin/ditto", ["-x", "-k", zipURL.path, work.path])
+
+        let bundle = work.appendingPathComponent("Markee.app")
+        let exec = bundle.appendingPathComponent("Contents/MacOS/Markee")
+        guard FileManager.default.isExecutableFile(atPath: exec.path) else {
+            throw UpdaterError.invalidBundle
+        }
+        let infoPlist = bundle.appendingPathComponent("Contents/Info.plist")
+        guard let info = NSDictionary(contentsOf: infoPlist),
+              let versionString = info["CFBundleShortVersionString"] as? String,
+              let parsed = AppVersion(versionString),
+              parsed == release.version else {
+            throw UpdaterError.invalidBundle
+        }
+        return bundle
+    }
+
     // MARK: - Install (implemented in Task 9)
 
     func installUpdate(_ release: GitHubRelease) async {}
