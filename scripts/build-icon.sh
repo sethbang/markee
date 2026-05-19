@@ -1,25 +1,10 @@
 #!/usr/bin/env bash
-# Generate AppIcon.icns from Resources/AppIcon.svg using built-in macOS tooling.
+# Generate .icns files from SVG sources using built-in macOS tooling.
+# Builds the app icon and the Markdown document icon.
 
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SRC="$ROOT/Resources/AppIcon.svg"
-OUT_ICNS="$ROOT/Resources/AppIcon.icns"
-ICONSET="$ROOT/build/AppIcon.iconset"
-
-if [ ! -f "$SRC" ]; then
-    echo "build-icon: missing $SRC" >&2; exit 1
-fi
-
-# Skip if .icns is newer than the source SVG.
-if [ -f "$OUT_ICNS" ] && [ "$OUT_ICNS" -nt "$SRC" ]; then
-    echo "build-icon: AppIcon.icns is up to date."
-    exit 0
-fi
-
-rm -rf "$ICONSET"
-mkdir -p "$ICONSET"
 
 # Required sizes (logical @ 1x and @ 2x). Pairs of "filename:pixel-size".
 PAIRS=(
@@ -35,11 +20,29 @@ PAIRS=(
     "icon_512x512@2x.png:1024"
 )
 
-for pair in "${PAIRS[@]}"; do
-    name="${pair%%:*}"
-    size="${pair##*:}"
-    sips -s format png -z "$size" "$size" "$SRC" --out "$ICONSET/$name" >/dev/null
-done
+build_icns() {
+    local src="$1"
+    local out_icns="$2"
+    local iconset="$3"
 
-iconutil -c icns -o "$OUT_ICNS" "$ICONSET"
-echo "build-icon: wrote $OUT_ICNS"
+    if [ ! -f "$src" ]; then
+        echo "build-icon: missing $src" >&2; exit 1
+    fi
+    if [ -f "$out_icns" ] && [ "$out_icns" -nt "$src" ]; then
+        echo "build-icon: $(basename "$out_icns") is up to date."
+        return
+    fi
+
+    rm -rf "$iconset"
+    mkdir -p "$iconset"
+    for pair in "${PAIRS[@]}"; do
+        local name="${pair%%:*}"
+        local size="${pair##*:}"
+        sips -s format png -z "$size" "$size" "$src" --out "$iconset/$name" >/dev/null
+    done
+    iconutil -c icns -o "$out_icns" "$iconset"
+    echo "build-icon: wrote $out_icns"
+}
+
+build_icns "$ROOT/Resources/AppIcon.svg" "$ROOT/Resources/AppIcon.icns" "$ROOT/build/AppIcon.iconset"
+build_icns "$ROOT/Resources/DocIcon.svg" "$ROOT/Resources/DocIcon.icns" "$ROOT/build/DocIcon.iconset"

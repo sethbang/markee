@@ -37,6 +37,8 @@
         <dict>
             <key>CFBundleTypeName</key>
             <string>Markdown Document</string>
+            <key>CFBundleTypeIconFile</key>
+            <string>DocIcon</string>
             <key>CFBundleTypeRole</key>
             <string>Editor</string>
             <key>LSHandlerRank</key>

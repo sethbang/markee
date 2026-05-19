@@ -8,6 +8,7 @@ Markee.app/
 
 # Generated icon (built from AppIcon.svg by scripts/build-icon.sh)
 Resources/AppIcon.icns
+Resources/DocIcon.icns
 
 # Vendored JS/CSS libraries (fetched by scripts/fetch-vendor.sh)
 Resources/web/vendor/
