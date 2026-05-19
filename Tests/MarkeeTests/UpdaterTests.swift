@@ -60,6 +60,8 @@ final class GitHubReleaseTests: XCTestCase {
         XCTAssertEqual(release?.version, AppVersion("0.5.0"))
         XCTAssertEqual(release?.zipURL.absoluteString, "https://example.com/dl/Markee.app.zip")
         XCTAssertEqual(release?.notes, "Release notes here.")
+        XCTAssertEqual(release?.pageURL.absoluteString,
+                       "https://github.com/sethbang/markee/releases/tag/v0.5.0")
     }
 
     func test_nilWhenZipAssetMissing() {
@@ -68,5 +70,21 @@ final class GitHubReleaseTests: XCTestCase {
 
     func test_nilWhenMalformedJSON() {
         XCTAssertNil(GitHubRelease(json: Data("not json".utf8)))
+    }
+
+    func test_notesEmptyWhenBodyMissing() {
+        let json = """
+        {
+          "tag_name": "v0.5.0",
+          "html_url": "https://github.com/sethbang/markee/releases/tag/v0.5.0",
+          "assets": [
+            { "name": "Markee.app.zip",
+              "browser_download_url": "https://example.com/dl/Markee.app.zip" }
+          ]
+        }
+        """.data(using: .utf8)!
+        let release = GitHubRelease(json: json)
+        XCTAssertNotNil(release)
+        XCTAssertEqual(release?.notes, "")
     }
 }
