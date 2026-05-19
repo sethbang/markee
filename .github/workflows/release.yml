@@ -17,7 +17,7 @@ jobs:
     name: Build + notarize + publish Markee.app
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install SwiftLint
         run: brew install swiftlint
@@ -26,7 +26,7 @@ jobs:
         run: swiftlint lint --strict Sources Tests
 
       - name: Cache vendored JS/CSS
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: Resources/web/vendor
           key: vendor-${{ runner.os }}-${{ hashFiles('scripts/fetch-vendor.sh') }}
@@ -142,7 +142,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: ${{ github.ref_name }}
           tag_name: ${{ github.ref_name }}
