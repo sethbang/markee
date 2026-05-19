@@ -9,6 +9,8 @@ struct AppVersion: Comparable, Sendable {
     init?(_ string: String) {
         var s = string.trimmingCharacters(in: .whitespaces)
         if s.hasPrefix("v") || s.hasPrefix("V") { s.removeFirst() }
+        // Drop any pre-release suffix ("1.0.0-rc1" -> "1.0.0"). Harmless:
+        // the updater only reads /releases/latest, which excludes pre-releases.
         if let dash = s.firstIndex(of: "-") { s = String(s[..<dash]) }
         guard !s.isEmpty else { return nil }
         let parts = s.split(separator: ".", omittingEmptySubsequences: false)
