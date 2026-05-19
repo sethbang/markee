@@ -156,7 +156,7 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
     private func loadFromDisk(reason: String) {
         let source: String
         do {
-            source = try Self.readFileWithFallback(at: fileURL)
+            source = try readFileWithFallback(at: fileURL)
             self.errorBanner = nil
         } catch {
             self.errorBanner = "Couldn't read \(fileURL.lastPathComponent): \(error.localizedDescription)"
@@ -164,15 +164,6 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
         }
         self.lastGoodSource = source
         render(source: source)
-    }
-
-    static func readFileWithFallback(at url: URL) throws -> String {
-        let data = try Data(contentsOf: url)
-        if let s = String(data: data, encoding: .utf8) { return s }
-        // Try utf16 with BOM detection
-        if let s = String(data: data, encoding: .utf16) { return s }
-        if let s = String(data: data, encoding: .isoLatin1) { return s }
-        return ""
     }
 
     // MARK: - Render
@@ -250,7 +241,7 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
     func copyMarkdownSource() {
         let source: String
         do {
-            source = try Self.readFileWithFallback(at: fileURL)
+            source = try readFileWithFallback(at: fileURL)
         } catch {
             self.errorBanner = "Couldn't read \(fileURL.lastPathComponent): \(error.localizedDescription)"
             return
