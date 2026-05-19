@@ -1,6 +1,6 @@
 name: Release
 
-# Triggered by pushing a tag like v0.6.0. Builds Markee.app from the tagged
+# Triggered by pushing a version tag (v*). Builds Markee.app from the tagged
 # commit, Developer-ID-signs and notarizes it, zips it, and publishes a GitHub
 # Release with the zip attached and the matching CHANGELOG.md section as body.
 
@@ -75,6 +75,14 @@ jobs:
           test -f Markee.app/Contents/Resources/THIRD-PARTY-NOTICES.md
           test -d Markee.app/Contents/PlugIns/QuickLookPreview.appex
           test -d Markee.app/Contents/PlugIns/QuickLookThumbnail.appex
+
+      - name: Verify Developer ID signature
+        run: |
+          if codesign -dvv Markee.app 2>&1 | grep -q "Signature=adhoc"; then
+            echo "::error::Markee.app is ad-hoc signed — Developer ID certificate import failed"
+            exit 1
+          fi
+          echo "Markee.app carries a non-ad-hoc signature."
 
       - name: Verify Info.plist version matches tag
         run: |

@@ -131,7 +131,7 @@ The Quick Look preview/thumbnail extensions (`Contents/PlugIns/*.appex`) only re
 Markee is distributed as a Developer-ID-signed, notarized app. Both the app and
 its two Quick Look `.appex` extensions are signed with the **Developer ID
 Application** certificate and the Hardened Runtime, then the bundle is notarized
-by Apple and the ticket stapled.
+by Apple and the ticket stapled. App Sandbox is intentionally **not** used — notarization requires only the Hardened Runtime, and sandboxing would constrain Markee's arbitrary-path file watching and task-toggle write-back.
 
 - `scripts/sign-app.sh` signs the bundle inside-out. With a Developer ID
   identity in the keychain it signs Developer ID + Hardened Runtime; with none
