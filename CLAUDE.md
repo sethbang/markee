@@ -1,6 +1,11 @@
 # Markee — orientation for Claude Code
 
-A native macOS app that watches a Markdown file on disk and re-renders a preview every time it's saved. Editor-agnostic. Built with SwiftUI + WKWebView; the actual rendering happens in JavaScript inside the WebView (markdown-it + plugins, KaTeX, highlight.js, Mermaid).
+A native macOS app that watches a Markdown file on disk and re-renders a
+preview every time it's saved. Editor-agnostic. Built with SwiftUI + WKWebView;
+the actual rendering happens in JavaScript inside the WebView (markdown-it +
+plugins, KaTeX, highlight.js, Mermaid). It also ships a Quick Look preview
+extension, per-file Finder thumbnails, and a Markdown document icon, and is
+distributed outside the App Store as a Developer-ID-signed, notarized `.app`.
 
 ## Run
 
@@ -8,34 +13,59 @@ A native macOS app that watches a Markdown file on disk and re-renders a preview
 make fetch-vendor   # one-time: downloads JS/CSS into Resources/web/vendor/ (gitignored)
 make app            # builds Markee.app at the repo root
 make run            # builds + opens
-make test           # swift test + node --test Tests/util.test.js (both green at last commit)
+make test           # swift test + node --test Tests/util.test.js
+make install        # builds and installs Markee.app to /Applications
+make notarize       # builds, signs, notarizes, and staples (see "Signing & notarization")
 ```
 
-`swift build` alone produces just the executable in `.build/`; you need `make app` to get a usable `.app` bundle with Info.plist, AppIcon.icns, and Resources/.
+`swift build` alone produces just the executables in `.build/`; `make app`
+assembles the usable `.app` bundle — Info.plist, icons, `Resources/`, and the
+two Quick Look extensions under `Contents/PlugIns/`.
 
 ## Layout
 
-- `Sources/Markee/` — Swift app
+- `Sources/MarkeeKit/` — shared library used by the app and both extensions
+  - `WebRenderer.swift` — headless WKWebView Markdown renderer
+  - `SchemeHandlers.swift` — `markee-app://` (bundle resources) and
+    `markee-doc://` (the document's directory, path-traversal sandboxed)
+  - `FileReader.swift` — encoding-tolerant file reader
+  - `Timeout.swift`, `ThumbnailLayout.swift` — async-timeout and thumbnail
+    page-fit helpers
+- `Sources/Markee/` — the SwiftUI app
   - `MarkeeApp.swift` — `@main`, `DocumentGroup`, menu commands, CLI installer
-  - `MarkdownDocument.swift` — read-only `FileDocument` (no content stored; PreviewView reloads from disk)
-  - `PreviewController.swift` — per-window controller owning the WKWebView + FileWatcher; routes JS messages, handles export-HTML and task-toggle write-back
+  - `MarkdownDocument.swift` — read-only `FileDocument` (no content stored;
+    `PreviewView` reloads from disk)
+  - `PreviewController.swift` — per-window controller owning the WKWebView +
+    FileWatcher; routes JS messages, handles export-HTML and task-toggle
+    write-back
   - `PreviewView.swift` — SwiftUI view: HSplitView (outline + WebView)
-  - `FileWatcher.swift` — kqueue-backed (DispatchSource) with atomic-save reattach logic
-  - `SchemeHandlers.swift` — `markee-app://` (bundle resources) and `markee-doc://` (current doc's directory, sandboxed)
-- `Resources/web/` — HTML/JS/CSS shipped into the bundle
+  - `FileWatcher.swift` — kqueue-backed (DispatchSource) with atomic-save
+    reattach logic
+- `Sources/MarkeeQuickLookPreview/` — Quick Look preview extension
+  (`QLPreviewingController`) → `QuickLookPreview.appex`
+- `Sources/MarkeeQuickLookThumbnail/` — Quick Look thumbnail extension
+  (`QLThumbnailProvider`) → `QuickLookThumbnail.appex`
+- `Resources/web/` — HTML/JS/CSS shipped into every bundle
   - `template.html` — loads vendor scripts, then `util.js`, then `app.js`
-  - `app.js` — IIFE wrapping `render`, `scrollToHeading`, `exportStandalone`, task-toggle click handler. Exposes `window.markee`.
-  - `util.js` — pure helpers (`collectTaskLineNumbers`, `slugify`), UMD so Node can require them for tests
+  - `app.js` — IIFE wrapping `render`, `scrollToHeading`, `exportStandalone`,
+    the task-toggle click handler. Exposes `window.markee`.
+  - `util.js` — pure helpers (`collectTaskLineNumbers`, `slugify`), UMD so Node
+    can require them for tests
   - `theme.css` — built-in light/dark theme
   - `vendor/` — fetched libs; **gitignored**
+- `Resources/Info.plist`, `Resources/QuickLookPreview-Info.plist`,
+  `Resources/QuickLookThumbnail-Info.plist` — app and extension bundle plists
+- `Resources/QuickLookExtension.entitlements` — App Sandbox entitlements for
+  the extensions (see "Signing & notarization")
+- `Resources/AppIcon.svg`, `Resources/DocIcon.svg` — icon sources; the `.icns`
+  files are built and gitignored
 - `Resources/cli/markee` — shell launcher (`open -b com.markee.preview`)
-- `Resources/AppIcon.svg` — source; `Resources/AppIcon.icns` is built (gitignored)
-- `scripts/build-icon.sh` — `sips` + `iconutil` → AppIcon.icns
-- `scripts/fetch-vendor.sh` — pinned downloads from jsdelivr
-- `scripts/sign-app.sh` — Developer ID / ad-hoc bundle signing (used by `make app`)
-- `scripts/notarize-app.sh` — `notarytool` submit + staple (used by `make notarize`)
-- `Tests/MarkeeTests/` — Swift unit tests (`@testable import Markee`)
-- `Tests/util.test.js` — Node `--test` runner over `util.js`
+- `scripts/` — `fetch-vendor.sh` (pinned jsdelivr downloads), `build-icon.sh`
+  (`sips` + `iconutil`), `sign-app.sh`, `notarize-app.sh`
+- `Tests/MarkeeTests/`, `Tests/MarkeeKitTests/` — Swift unit tests;
+  `Tests/util.test.js` — Node `--test` runner over `util.js`
+- `.github/workflows/` — `ci.yml` (lint + build/test on push/PR) and
+  `release.yml` (tag-triggered signed + notarized release)
 - `fixtures/sample.md` — exercises every feature
 
 ## How the JS↔Swift bridge works
@@ -58,82 +88,13 @@ make test           # swift test + node --test Tests/util.test.js (both green at
 - **`pickActiveHeading` (util.js) and the IntersectionObserver (app.js) are paired.** The observer uses `rootMargin: "0px 0px -80% 0px"` to fire when a heading enters the top 20% of the viewport; the helper picks the last heading whose top is ≤ 20% of viewport height. If you change one, change the other to match.
 - **WKWebView does NOT render `::before` / `::after` pseudo-elements on `<input>`.** The custom task-list checkbox checkmark uses a `background-image: url("data:image/svg+xml;...")` instead. Do not try to switch back to `::after`.
 
-## Conventions in this repo
+## Conventions
 
-- Auto-mode-friendly: the user prefers action over questions for routine work.
-- **No README/docs unless asked.** This file and `README.md` were both explicitly requested.
-- **No git operations unless asked.** The user drives commits and PRs.
-- Default to **no comments**; only annotate WHY when non-obvious (invariants, workarounds, bug references).
-- Don't commit `Resources/AppIcon.icns` (built) or `Resources/web/vendor/` (fetched). Both are gitignored.
-- `.claude/` is gitignored.
-
-## What's done (v0.1)
-
-Watch + rerender, atomic-save aware, scroll preservation, GFM + footnotes + deflists + attrs + task-lists + YAML front matter, KaTeX, highlight.js, Mermaid, outline sidebar (collapsed default, ⌘⌥\\), interactive task-list checkboxes write back to file, export standalone HTML (⌘E), find / print-as-PDF (free from WKWebView), CLI launcher with menu installer, custom app icon, default window 1000×800. 18 JS tests + 4 Swift tests passing.
-
-## What's done (v0.2 — Soft Modern UI/UX pass)
-
-Visual identity redesign. Integrated window chrome (no system titlebar divider, custom 44pt gradient bar, traffic lights kept). Outline sidebar redesigned with H1/H2/H3 indent + live active-section highlight (driven by `currentHeadingID` published from JS IntersectionObserver). Full `theme.css` rewrite with new token palette (`--surface`, `--accent`, etc.), Soft Modern typography, custom task-list checkboxes, faded `<hr>`, lede paragraph after H1. Dark + light themes, system-following via `prefers-color-scheme`. See `docs/superpowers/specs/2026-05-11-ui-ux-redesign-design.md`.
-
-## What's done (v1.0 — Finder integration & notarization)
-
-Quick Look preview + per-file thumbnail extensions — a shared `MarkeeKit`
-renderer behind two `.appex` bundles in `Contents/PlugIns/`. Branded Markdown
-document icon. Mermaid now lazy-loaded (only diagram-bearing documents pay its
-cost). Developer ID code signing + notarization for the app and both
-extensions — see "Signing & notarization". The first publicly distributable
-release.
-
-## Not done
-
-- DMG / Homebrew cask
-- PreviewController test coverage: `toggleTask` drift bailout, line-ending preservation, export-HTML write
-- Print stylesheet (uses screen CSS; usually fine, breaks near page boundaries can be ugly)
-- App icon cache invalidation guidance (if the Dock shows a stale icon: `killall Dock`)
-- In-app theme picker / custom CSS — still deferred (system appearance toggle is sufficient for v0.2)
-- True MultiMarkdown citation/cross-ref support — deferred; we ship GFM-ish via plugins
-
-## Known issues blocking public release
-
-*Issues #1 and #4 are resolved by Developer ID notarization (see "Signing & notarization" below). #2 and #3 remain.*
-
-### 1. Open With picker grays out Markee; not in "Recommended Applications"
-
-**Status: RESOLVED — the app is now Developer ID signed and notarized (see "Signing & notarization" below), so `spctl -a` passes and the picker enables Markee normally. The diagnosis below is kept for historical context.**
-
-**Symptom.** Right-click .md → Open With → Other… shows Markee grayed out under "Recommended Applications" *and* under "All Applications". The bundle is registered, the binding is correct, and `open -Ra Markee` works — but the picker UI refuses to let users select it.
-
-**Why.** macOS (Sonoma+) gates the Open With picker on a Gatekeeper assessment (`spctl -a`). Ad-hoc signed apps fail this assessment. Self-signed certs — even trusted system-wide via `security add-trusted-cert -p codeSign` — *also* fail, because `spctl -a` specifically requires Apple's CA chain (Developer ID Application or notarized). There is no purely-local workaround. Note also: every file in the bundle carries `com.apple.provenance` xattr that `xattr -cr` cannot remove on Sonoma+; this is kernel-managed and Apple intends for it to stay.
-
-**Why .md files still open with Markee anyway.** The actual LaunchServices binding (the user's "always open with" choice stored in `~/Library/Preferences/com.apple.LaunchServices/com.apple.launchservices.secure.plist`) does *not* gate on Gatekeeper. So once a binding is set — by any means — files open with Markee on double-click. The picker UI just refuses to be the path that sets the binding.
-
-**Workaround we used during development.** Get Info → Open with → "Other…" → switch dropdown to "All Applications" → navigate to /Applications/Markee.app → it's grayed but still clickable in the file dialog → click Open → Change All. Once. Then it sticks.
-
-**Real fix (done — see "Signing & notarization" below).** It was:
-- Enroll in the Apple Developer Program ($99/yr), get a Developer ID Application cert, codesign with that, notarize. After notarization, `spctl -a` passes and the picker enables Markee normally.
-- Or: ship a tiny first-run helper that writes the LSHandler entries directly to the user's `launchservices.secure.plist` and runs `lsregister`. Avoids the picker entirely but doesn't help discoverability for users who didn't go through the helper.
-
-**Do NOT.** Don't switch to a self-signed cert — counterintuitively this makes the picker *worse* than ad-hoc, because Apple's heuristic treats "signed by random untrusted CA" as more suspicious than "no claim of identity." (We tried this in the May 2026 debugging session and confirmed it; reverted.)
-
-### 2. File → Open dialog quits the app
-
-**Symptom.** Launch Markee, File → Open, select a .md file, click Open. The app quits silently. No crash log written. Drag-onto-Dock-icon works fine for the same file.
-
-**Status.** Not yet root-caused — needs a live `log stream --predicate 'process == "Markee"' --info --debug` run while reproducing. Suspect either:
-- `applicationShouldTerminateAfterLastWindowClosed = true` firing during the dialog→new-window transition when SwiftUI's `DocumentGroup` briefly has zero windows.
-- Something in `PreviewController.init` taking a path that crashes when invoked via the SwiftUI Open dialog vs. the dock-drop path. Both should funnel through `MarkdownDocument(configuration:)` → `PreviewView(fileURL:)` → `PreviewContent` → `PreviewController(fileURL:)`, so this would be surprising — but it's the only behavioral difference.
-
-Reproduce + capture logs before public release.
-
-### 3. Bundle installation path
-
-`make app` now syncs the built bundle to `/Applications/Markee.app` automatically *if that path already exists* (as a real directory; symlinks were tried and rejected by Finder's picker — symlinked .app bundles in /Applications are *also* grayed out in the picker, regardless of signature). First-time setup: `make install`.
-
-Do **not** symlink /Applications/Markee.app → repo path. Finder's "Other…" picker won't let users select symlinked apps even in "All Applications" mode (we confirmed this in the May 2026 session).
-
-### 4. Quick Look extensions need a notarized app — RESOLVED
-
-The Quick Look preview/thumbnail extensions (`Contents/PlugIns/*.appex`) only register with `pkd` when the host app passes Gatekeeper. Ad-hoc signing does **not** work — `pkd` silently refuses to register the extensions and `pluginkit -a` no-ops. This is resolved by Developer ID signing + notarization (see "Signing & notarization" below): a notarized build passes `spctl -a`, `pkd` registers the extensions, and Quick Look + the document icon work.
+- Default to **no comments**; annotate WHY only when non-obvious (invariants,
+  workarounds, bug references).
+- Build products are gitignored and must never be committed: `Markee.app`,
+  `Resources/AppIcon.icns`, `Resources/DocIcon.icns`, `Resources/web/vendor/`.
+- `.claude/` and `docs/superpowers/` are gitignored — intentionally local.
 
 ## Signing & notarization
 
@@ -162,12 +123,16 @@ Developer ID `.p12`), `MACOS_CERT_PASSWORD`, `NOTARY_KEY_P8` (base64 of the API
 key `.p8`), `NOTARY_KEY_ID`, `NOTARY_ISSUER_ID`. `ci.yml` (push/PR) stays
 ad-hoc — signing secrets must never reach PR builds.
 
+## Not yet built
+
+- DMG installer / Homebrew cask
+- In-app theme picker / custom CSS
+- A print-tuned stylesheet (printing currently reuses the screen CSS)
+- True MultiMarkdown citation / cross-reference support (GFM-ish via plugins today)
+
 ## Useful one-liners
 
 ```sh
-# Find anywhere the old name 'macdown' or 'Macdown' still lurks
-grep -rln "macdown\|Macdown" --exclude-dir=.build --exclude-dir=.git --exclude-dir=vendor
-
 # Quit any running instance before rebuilding
 osascript -e 'tell application "Markee" to quit'
 
