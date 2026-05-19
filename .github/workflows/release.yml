@@ -42,7 +42,11 @@ jobs:
           MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
           MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
         run: |
+          if [ -z "$MACOS_CERT_P12" ]; then
+            echo "::error::MACOS_CERT_P12 secret is not set"; exit 1
+          fi
           CERT_PATH="$RUNNER_TEMP/markee-cert.p12"
+          trap 'rm -f "$CERT_PATH"' EXIT  # remove the decoded cert on any exit
           KEYCHAIN_PATH="$RUNNER_TEMP/markee-signing.keychain-db"
           KEYCHAIN_PW=$(openssl rand -base64 24)
 
@@ -59,7 +63,6 @@ jobs:
           security list-keychains -d user -s "$KEYCHAIN_PATH" \
             $(security list-keychains -d user | sed 's/"//g')
 
-          rm -f "$CERT_PATH"
           echo "MARKEE_KEYCHAIN=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
 
       - name: Build app bundle (Developer ID signed)
@@ -89,11 +92,14 @@ jobs:
           NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
           NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
         run: |
+          if [ -z "$NOTARY_KEY_P8" ]; then
+            echo "::error::NOTARY_KEY_P8 secret is not set"; exit 1
+          fi
           KEY_PATH="$RUNNER_TEMP/notary-key.p8"
+          trap 'rm -f "$KEY_PATH"' EXIT  # remove the decoded API key on any exit
           echo "$NOTARY_KEY_P8" | base64 --decode > "$KEY_PATH"
           export NOTARY_KEY_P8_PATH="$KEY_PATH"
           ./scripts/notarize-app.sh Markee.app
-          rm -f "$KEY_PATH"
 
       - name: Zip Markee.app
         run: |
