@@ -12,6 +12,11 @@ struct MarkeeApp: App {
         }
         .defaultSize(width: 1000, height: 800)
         .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") {
+                    Updater.shared.checkForUpdatesMenuAction()
+                }
+            }
             CommandGroup(after: .newItem) {
                 Divider()
                 Button("Install Command Line Tool…") {
@@ -118,6 +123,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // document window appears.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        Updater.shared.checkOnLaunch()
     }
 
     static func installCLI() {
