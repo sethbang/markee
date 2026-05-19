@@ -59,9 +59,14 @@ jobs:
             -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: \
             -s -k "$KEYCHAIN_PW" "$KEYCHAIN_PATH"
-          # Add our keychain to the search list so codesign/security find it.
-          security list-keychains -d user -s "$KEYCHAIN_PATH" \
-            $(security list-keychains -d user | sed 's/"//g')
+          # Prepend our keychain to the search list, keeping the existing
+          # entries (System.keychain holds the Apple CA chain codesign needs).
+          # Read into an array so each path stays a single argument.
+          OLD_KEYCHAINS=()
+          while IFS= read -r kc; do
+            [ -n "$kc" ] && OLD_KEYCHAINS+=("$kc")
+          done < <(security list-keychains -d user | sed 's/[[:space:]]*"//; s/"[[:space:]]*$//')
+          security list-keychains -d user -s "$KEYCHAIN_PATH" "${OLD_KEYCHAINS[@]}"
 
           echo "MARKEE_KEYCHAIN=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
 
@@ -87,9 +92,13 @@ jobs:
       - name: Verify Info.plist version matches tag
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#v}"
+          # Strip any pre-release suffix so a tag like v1.0.0-rc.1 still
+          # validates against Info.plist 1.0.0 (lets you dry-run this workflow
+          # with an -rc tag before the real release).
+          BASE_VERSION="${TAG_VERSION%%-*}"
           PLIST_VERSION=$(defaults read "$PWD/Markee.app/Contents/Info" CFBundleShortVersionString)
-          echo "Tag: $TAG_VERSION, Info.plist: $PLIST_VERSION"
-          if [ "$TAG_VERSION" != "$PLIST_VERSION" ]; then
+          echo "Tag: $TAG_VERSION (base $BASE_VERSION), Info.plist: $PLIST_VERSION"
+          if [ "$BASE_VERSION" != "$PLIST_VERSION" ]; then
             echo "::error::Tag $TAG_VERSION does not match Info.plist version $PLIST_VERSION. Bump Resources/Info.plist before tagging."
             exit 1
           fi
