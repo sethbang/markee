@@ -273,20 +273,32 @@
     }
 
     // ---- lazy Mermaid -------------------------------------------------------
-    let mermaidLoading = false;
+    // "unloaded" | "loading" | "ready"
+    let mermaidState = "unloaded";
+    let mermaidWaiters = [];
 
-    // Inject mermaid.min.js (UMD bundle — not the ESM split build) once, then
-    // invoke `then` after the existing markee:mermaid-ready listener has run
-    // mermaid.initialize(). If a load is already in flight, queue `then`.
+    // Load mermaid.min.js (UMD bundle — not the ESM split build) once. On load,
+    // dispatch markee:mermaid-ready (the existing listener runs mermaid.initialize
+    // synchronously during dispatch), THEN invoke each queued `then`. On failure
+    // the queue is dropped — diagrams stay as code — and a later render retries.
     function ensureMermaid(then) {
-        if (window.mermaid) { then(); return; }
-        window.addEventListener("markee:mermaid-ready", then, { once: true });
-        if (mermaidLoading) return;
-        mermaidLoading = true;
+        if (mermaidState === "ready" && window.mermaid) { then(); return; }
+        mermaidWaiters.push(then);
+        if (mermaidState === "loading") return;
+        mermaidState = "loading";
         const s = document.createElement("script");
         s.src = "markee-app://app/vendor/mermaid/mermaid.min.js";
-        s.onload = () => { window.dispatchEvent(new Event("markee:mermaid-ready")); };
-        s.onerror = () => { mermaidLoading = false; /* diagrams stay as code */ };
+        s.onload = () => {
+            mermaidState = "ready";
+            window.dispatchEvent(new Event("markee:mermaid-ready"));
+            const waiters = mermaidWaiters;
+            mermaidWaiters = [];
+            waiters.forEach((fn) => fn());
+        };
+        s.onerror = () => {
+            mermaidState = "unloaded";
+            mermaidWaiters = [];
+        };
         document.head.appendChild(s);
     }
 
