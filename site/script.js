@@ -20,6 +20,24 @@
     });
   });
 
+  // Keep the displayed version in sync with the latest GitHub release so the
+  // page can't drift from what's actually published. The static text in the
+  // HTML is the fallback for when this fetch fails or JS is unavailable.
+  fetch("https://api.github.com/repos/sethbang/markee/releases/latest", {
+    headers: { Accept: "application/vnd.github+json" },
+  })
+    .then((response) => (response.ok ? response.json() : null))
+    .then((release) => {
+      const tag = release && release.tag_name;
+      if (!tag) return;
+      document.querySelectorAll(".js-version").forEach((el) => {
+        el.textContent = tag;
+      });
+    })
+    .catch(() => {
+      /* Offline or rate-limited — the static fallback text stays. */
+    });
+
   // Reveal-on-scroll. Base CSS keeps .reveal elements visible; we add
   // .reveal-armed to opt in to the hidden-then-fade animation, then
   // .is-visible on intersect. If IntersectionObserver isn't available, we
