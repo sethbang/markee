@@ -116,6 +116,12 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
         NotificationCenter.default.addObserver(
             self, selector: #selector(handleReload),
             name: .reloadFile, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleCopyMarkdownSource),
+            name: .copyMarkdownSource, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleRevealInFinder),
+            name: .revealInFinder, object: nil)
     }
 
     deinit {
@@ -233,6 +239,38 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
     @objc private func handleReload() {
         guard webView.window?.isKeyWindow == true else { return }
         loadFromDisk(reason: "manual")
+    }
+
+    /// ⌘⇧C — copy the file's raw Markdown to the clipboard. Reads fresh from
+    /// disk via the renderer's read path so the clipboard never holds a stale
+    /// snapshot. Public so MarkeeWebView's context menu can call it directly.
+    func copyMarkdownSource() {
+        let source: String
+        do {
+            source = try Self.readFileWithFallback(at: fileURL)
+        } catch {
+            self.errorBanner = "Couldn't read \(fileURL.lastPathComponent): \(error.localizedDescription)"
+            return
+        }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(source, forType: .string)
+    }
+
+    /// ⌘⇧R — reveal the current file in Finder. Public so MarkeeWebView's
+    /// context menu can call it directly.
+    func revealInFinder() {
+        NSWorkspace.shared.activateFileViewerSelecting([fileURL])
+    }
+
+    @objc private func handleCopyMarkdownSource() {
+        guard webView.window?.isKeyWindow == true else { return }
+        copyMarkdownSource()
+    }
+
+    @objc private func handleRevealInFinder() {
+        guard webView.window?.isKeyWindow == true else { return }
+        revealInFinder()
     }
 
     /// ⌘⇧G — mirror of handleFindNext, searching backward.
