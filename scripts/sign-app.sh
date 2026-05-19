@@ -46,12 +46,28 @@ fi
 
 # Sign inside-out: nested extensions first, then the app. `codesign --deep` is
 # deprecated and seals nested code unreliably — sign each item explicitly.
-for item in "$PREVIEW_APPEX" "$THUMBNAIL_APPEX" "$APP"; do
-    if [ -d "$item" ]; then
-        echo "sign-app: signing $item"
-        codesign "${SIGN_ARGS[@]}" "$item"
+#
+# The two Quick Look extensions MUST be App-Sandboxed — pkd refuses to register
+# an unsandboxed Quick Look extension. The app itself is NOT sandboxed (it
+# watches and writes Markdown files at arbitrary paths).
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+EXT_ENTITLEMENTS="$SCRIPT_DIR/../Resources/QuickLookExtension.entitlements"
+if [ ! -f "$EXT_ENTITLEMENTS" ]; then
+    echo "sign-app: missing $EXT_ENTITLEMENTS" >&2
+    exit 1
+fi
+
+for appex in "$PREVIEW_APPEX" "$THUMBNAIL_APPEX"; do
+    if [ -d "$appex" ]; then
+        echo "sign-app: signing $appex (sandboxed extension)"
+        codesign "${SIGN_ARGS[@]}" --entitlements "$EXT_ENTITLEMENTS" "$appex"
     fi
 done
+
+if [ -d "$APP" ]; then
+    echo "sign-app: signing $APP"
+    codesign "${SIGN_ARGS[@]}" "$APP"
+fi
 
 codesign --verify --strict --verbose=2 "$APP"
 echo "sign-app: done ($APP)"
