@@ -4,10 +4,14 @@ import WebKit
 /// right-click context menu. WKWebView owns its context menu, so SwiftUI's
 /// `.contextMenu` cannot reach it — we extend `willOpenMenu` instead.
 final class MarkeeWebView: WKWebView {
+    /// Weak to avoid a retain cycle: PreviewController owns this webView.
     weak var controller: PreviewController?
 
     override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
         super.willOpenMenu(menu, with: event)
+
+        // No isKeyWindow guard needed: a right-click targets this exact
+        // window directly (unlike the broadcast-to-all-windows menu commands).
         menu.addItem(.separator())
 
         let copyItem = NSMenuItem(
