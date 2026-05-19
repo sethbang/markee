@@ -43,14 +43,14 @@ final class GitHubReleaseTests: XCTestCase {
               { "name": "SomethingElse.txt",
                 "browser_download_url": "https://example.com/dl/other.txt" }
               """
-        return """
+        return Data("""
         {
           "tag_name": "v0.5.0",
           "html_url": "https://github.com/sethbang/markee/releases/tag/v0.5.0",
           "body": "Release notes here.",
           "assets": [ \(asset) ]
         }
-        """.data(using: .utf8)!
+        """.utf8)
     }
 
     func test_parsesValidPayload() {
@@ -73,7 +73,7 @@ final class GitHubReleaseTests: XCTestCase {
     }
 
     func test_notesEmptyWhenBodyMissing() {
-        let json = """
+        let json = Data("""
         {
           "tag_name": "v0.5.0",
           "html_url": "https://github.com/sethbang/markee/releases/tag/v0.5.0",
@@ -82,7 +82,7 @@ final class GitHubReleaseTests: XCTestCase {
               "browser_download_url": "https://example.com/dl/Markee.app.zip" }
           ]
         }
-        """.data(using: .utf8)!
+        """.utf8)
         let release = GitHubRelease(json: json)
         XCTAssertNotNil(release)
         XCTAssertEqual(release?.notes, "")
