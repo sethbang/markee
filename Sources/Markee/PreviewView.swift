@@ -93,7 +93,11 @@ private struct PreviewContent: View {
     private func configureWindow(_ window: NSWindow) {
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
-        window.styleMask.insert(.fullSizeContentView)
+        // Only assign styleMask when it actually changes — reassigning it
+        // forces an NSThemeFrame rebuild. This runs on every becomeKey.
+        if !window.styleMask.contains(.fullSizeContentView) {
+            window.styleMask.insert(.fullSizeContentView)
+        }
         window.isMovableByWindowBackground = false
     }
 }

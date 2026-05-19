@@ -12,6 +12,11 @@ struct MarkeeApp: App {
         }
         .defaultSize(width: 1000, height: 800)
         .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") {
+                    Updater.shared.checkForUpdatesMenuAction()
+                }
+            }
             CommandGroup(after: .newItem) {
                 Divider()
                 Button("Install Command Line Tool…") {
@@ -60,6 +65,15 @@ struct MarkeeApp: App {
                     NotificationCenter.default.post(name: .openInEditor, object: nil)
                 }
                 .keyboardShortcut("E", modifiers: [.command, .option])
+                Divider()
+                Button("Copy Markdown Source") {
+                    NotificationCenter.default.post(name: .copyMarkdownSource, object: nil)
+                }
+                .keyboardShortcut("C", modifiers: [.command, .shift])
+                Button("Reveal in Finder") {
+                    NotificationCenter.default.post(name: .revealInFinder, object: nil)
+                }
+                .keyboardShortcut("R", modifiers: [.command, .shift])
             }
             CommandGroup(replacing: .printItem) {
                 Button("Print…") {
@@ -98,6 +112,8 @@ extension Notification.Name {
     static let findNext = Notification.Name("MarkeeFindNext")
     static let findPrevious = Notification.Name("MarkeeFindPrevious")
     static let reloadFile = Notification.Name("MarkeeReloadFile")
+    static let copyMarkdownSource = Notification.Name("MarkeeCopyMarkdownSource")
+    static let revealInFinder = Notification.Name("MarkeeRevealInFinder")
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -107,6 +123,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // document window appears.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        Updater.shared.checkOnLaunch()
     }
 
     static func installCLI() {
