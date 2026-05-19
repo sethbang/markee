@@ -175,14 +175,61 @@ final class Updater {
         return release
     }
 
-    // MARK: - Temporary stubs (replaced in Tasks 7 and 9)
+    // MARK: - UI
 
-    func presentUpdateAvailable(_ release: GitHubRelease) {}
-    func presentUpToDate() {}
-    func presentError(_ message: String) {}
-    func installUpdate(_ release: GitHubRelease) async {}
+    func presentUpdateAvailable(_ release: GitHubRelease) {
+        let alert = NSAlert()
+        alert.messageText = "A new version of Markee is available"
+        var info = "Markee \(release.tagName) is available — you have \(Self.currentVersionString)."
+        if !release.notes.isEmpty {
+            let notes = release.notes.count > 500
+                ? String(release.notes.prefix(500)) + "…"
+                : release.notes
+            info += "\n\n" + notes
+        }
+        alert.informativeText = info
+        alert.addButton(withTitle: "Update Now")
+        alert.addButton(withTitle: "Remind Me Later")
+        alert.addButton(withTitle: "Skip This Version")
 
-    static func storeSkippedVersion(_ tag: String) {
-        UserDefaults.standard.set(tag, forKey: skippedVersionKey)
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            Task { await installUpdate(release) }
+        case .alertThirdButtonReturn:
+            UserDefaults.standard.set(release.tagName, forKey: Self.skippedVersionKey)
+        default:
+            break  // Remind Me Later — nothing persisted; the next check re-offers.
+        }
     }
+
+    func presentUpToDate() {
+        let alert = NSAlert()
+        alert.messageText = "You're up to date"
+        alert.informativeText = "Markee \(Self.currentVersionString) is the latest version."
+        alert.runModal()
+    }
+
+    func presentError(_ message: String) {
+        let alert = NSAlert()
+        alert.messageText = "Couldn't check for updates"
+        alert.informativeText = message
+        alert.runModal()
+    }
+
+    /// Used when self-replace can't proceed (read-only location, bad download).
+    /// Sends the user to the release page to update by hand.
+    func presentManualFallback(_ release: GitHubRelease, reason: String) {
+        let alert = NSAlert()
+        alert.messageText = "Update Markee manually"
+        alert.informativeText = "\(reason)\n\nOpen the download page to get \(release.tagName) in your browser."
+        alert.addButton(withTitle: "Open Download Page")
+        alert.addButton(withTitle: "Cancel")
+        if alert.runModal() == .alertFirstButtonReturn {
+            NSWorkspace.shared.open(release.pageURL)
+        }
+    }
+
+    // MARK: - Install (implemented in Task 9)
+
+    func installUpdate(_ release: GitHubRelease) async {}
 }
