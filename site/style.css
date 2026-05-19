@@ -450,6 +450,23 @@ kbd {
   margin: 0;
 }
 
+.feature-inline {
+  margin: 22px 0 0;
+  max-width: 300px;
+}
+.feature-inline img {
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius-card);
+  border: 1px solid var(--hairline);
+  background: var(--surface-3);
+}
+.feature-inline figcaption {
+  margin-top: 8px;
+  font-size: 0.86rem;
+  color: var(--fg-muted);
+}
+
 /* ---- Install ------------------------------------------------------------- */
 .install {
   background: var(--surface-2);

@@ -1,5 +1,5 @@
 import XCTest
-@testable import Markee
+@testable import MarkeeKit
 
 final class SchemeHandlerTests: XCTestCase {
     private var tempDir: URL!

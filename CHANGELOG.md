@@ -4,6 +4,30 @@ All notable changes to Markee are documented here. Format roughly follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] — 2026-05-19
+
+The first publicly distributable release — Developer ID signed and notarized,
+so Markee installs and opens without Gatekeeper warnings.
+
+### Added
+- **Quick Look preview** — press Space on a Markdown file in Finder to see it
+  fully rendered instead of as raw source. A sandboxed Quick Look extension
+  that reuses the app's renderer.
+- **Per-file Finder thumbnails** — `.md` files show a thumbnail of their
+  rendered content in Finder's icon views, falling back to the document icon.
+- **Markdown document icon** — `.md` files now carry a branded Markee document
+  icon in place of the generic plain-text page.
+- **Developer ID signing & notarization** — the app and both Quick Look
+  extensions are signed with a Developer ID certificate and notarized by Apple,
+  so they install and open without Gatekeeper warnings. `make notarize` and the
+  release workflow handle it end to end.
+
+### Changed
+- Mermaid now loads lazily — only documents that contain a diagram pay its
+  ~2.5 MB parse cost, so cold-start render is faster for everything else.
+- Bundle version bumped to `1.0.0` (CFBundleShortVersionString) / `6`
+  (CFBundleVersion).
+
 ## [0.5.0] — 2026-05-18
 
 ### Added

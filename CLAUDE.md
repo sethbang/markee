@@ -32,6 +32,8 @@ make test           # swift test + node --test Tests/util.test.js (both green at
 - `Resources/AppIcon.svg` — source; `Resources/AppIcon.icns` is built (gitignored)
 - `scripts/build-icon.sh` — `sips` + `iconutil` → AppIcon.icns
 - `scripts/fetch-vendor.sh` — pinned downloads from jsdelivr
+- `scripts/sign-app.sh` — Developer ID / ad-hoc bundle signing (used by `make app`)
+- `scripts/notarize-app.sh` — `notarytool` submit + staple (used by `make notarize`)
 - `Tests/MarkeeTests/` — Swift unit tests (`@testable import Markee`)
 - `Tests/util.test.js` — Node `--test` runner over `util.js`
 - `fixtures/sample.md` — exercises every feature
@@ -73,9 +75,17 @@ Watch + rerender, atomic-save aware, scroll preservation, GFM + footnotes + defl
 
 Visual identity redesign. Integrated window chrome (no system titlebar divider, custom 44pt gradient bar, traffic lights kept). Outline sidebar redesigned with H1/H2/H3 indent + live active-section highlight (driven by `currentHeadingID` published from JS IntersectionObserver). Full `theme.css` rewrite with new token palette (`--surface`, `--accent`, etc.), Soft Modern typography, custom task-list checkboxes, faded `<hr>`, lede paragraph after H1. Dark + light themes, system-following via `prefers-color-scheme`. See `docs/superpowers/specs/2026-05-11-ui-ux-redesign-design.md`.
 
+## What's done (v1.0 — Finder integration & notarization)
+
+Quick Look preview + per-file thumbnail extensions — a shared `MarkeeKit`
+renderer behind two `.appex` bundles in `Contents/PlugIns/`. Branded Markdown
+document icon. Mermaid now lazy-loaded (only diagram-bearing documents pay its
+cost). Developer ID code signing + notarization for the app and both
+extensions — see "Signing & notarization". The first publicly distributable
+release.
+
 ## Not done
 
-- Apple Developer ID signing / notarization (needed for distribution beyond your machine) — see "Known issues blocking public release" below
 - DMG / Homebrew cask
 - PreviewController test coverage: `toggleTask` drift bailout, line-ending preservation, export-HTML write
 - Print stylesheet (uses screen CSS; usually fine, breaks near page boundaries can be ugly)
@@ -85,7 +95,11 @@ Visual identity redesign. Integrated window chrome (no system titlebar divider, 
 
 ## Known issues blocking public release
 
+*Issues #1 and #4 are resolved by Developer ID notarization (see "Signing & notarization" below). #2 and #3 remain.*
+
 ### 1. Open With picker grays out Markee; not in "Recommended Applications"
+
+**Status: RESOLVED — the app is now Developer ID signed and notarized (see "Signing & notarization" below), so `spctl -a` passes and the picker enables Markee normally. The diagnosis below is kept for historical context.**
 
 **Symptom.** Right-click .md → Open With → Other… shows Markee grayed out under "Recommended Applications" *and* under "All Applications". The bundle is registered, the binding is correct, and `open -Ra Markee` works — but the picker UI refuses to let users select it.
 
@@ -95,7 +109,7 @@ Visual identity redesign. Integrated window chrome (no system titlebar divider, 
 
 **Workaround we used during development.** Get Info → Open with → "Other…" → switch dropdown to "All Applications" → navigate to /Applications/Markee.app → it's grayed but still clickable in the file dialog → click Open → Change All. Once. Then it sticks.
 
-**Real fix for public release.** Either:
+**Real fix (done — see "Signing & notarization" below).** It was:
 - Enroll in the Apple Developer Program ($99/yr), get a Developer ID Application cert, codesign with that, notarize. After notarization, `spctl -a` passes and the picker enables Markee normally.
 - Or: ship a tiny first-run helper that writes the LSHandler entries directly to the user's `launchservices.secure.plist` and runs `lsregister`. Avoids the picker entirely but doesn't help discoverability for users who didn't go through the helper.
 
@@ -116,6 +130,37 @@ Reproduce + capture logs before public release.
 `make app` now syncs the built bundle to `/Applications/Markee.app` automatically *if that path already exists* (as a real directory; symlinks were tried and rejected by Finder's picker — symlinked .app bundles in /Applications are *also* grayed out in the picker, regardless of signature). First-time setup: `make install`.
 
 Do **not** symlink /Applications/Markee.app → repo path. Finder's "Other…" picker won't let users select symlinked apps even in "All Applications" mode (we confirmed this in the May 2026 session).
+
+### 4. Quick Look extensions need a notarized app — RESOLVED
+
+The Quick Look preview/thumbnail extensions (`Contents/PlugIns/*.appex`) only register with `pkd` when the host app passes Gatekeeper. Ad-hoc signing does **not** work — `pkd` silently refuses to register the extensions and `pluginkit -a` no-ops. This is resolved by Developer ID signing + notarization (see "Signing & notarization" below): a notarized build passes `spctl -a`, `pkd` registers the extensions, and Quick Look + the document icon work.
+
+## Signing & notarization
+
+Markee is distributed as a Developer-ID-signed, notarized app. Both the app and
+its two Quick Look `.appex` extensions are signed with the **Developer ID
+Application** certificate and the Hardened Runtime, then the bundle is notarized
+by Apple and the ticket stapled. The app itself is **not** sandboxed — it watches and writes Markdown files at arbitrary paths. The two Quick Look `.appex` extensions, however, **are** sandboxed (`Resources/QuickLookExtension.entitlements`): `pkd` refuses to register an unsandboxed Quick Look extension. Their entitlements are `com.apple.security.app-sandbox`, `com.apple.security.files.user-selected.read-only` (to read the previewed file), and `com.apple.security.network.client` — the last is **load-bearing**: without it `WKWebView`'s helper processes crash inside the sandboxed extension and the renderer hangs forever (preview shows an endless spinner). `sign-app.sh` signs the extensions with those entitlements and the app without.
+
+- `scripts/sign-app.sh` signs the bundle inside-out. With a Developer ID
+  identity in the keychain it signs Developer ID + Hardened Runtime; with none
+  it falls back to ad-hoc (so CI build-test and contributors still build).
+- `scripts/notarize-app.sh` zips, submits to `notarytool`, and staples.
+- `make app` signs; `make notarize` builds + signs + notarizes + staples.
+
+**Local setup (one-time):**
+- Install the "Developer ID Application" certificate in your login keychain
+  (Xcode → Settings → Accounts → Manage Certificates, or the developer portal).
+- Store the App Store Connect API key as a notarytool keychain profile:
+  `xcrun notarytool store-credentials markee-notary --key <AuthKey.p8> --key-id <KEY_ID> --issuer <ISSUER_ID>`
+- Then `NOTARY_KEYCHAIN_PROFILE=markee-notary make notarize` produces a
+  notarized, stapled bundle.
+
+**CI:** `release.yml` (tag-triggered) imports the cert and notarizes
+automatically. It needs five repo secrets: `MACOS_CERT_P12` (base64 of the
+Developer ID `.p12`), `MACOS_CERT_PASSWORD`, `NOTARY_KEY_P8` (base64 of the API
+key `.p8`), `NOTARY_KEY_ID`, `NOTARY_ISSUER_ID`. `ci.yml` (push/PR) stays
+ad-hoc — signing secrets must never reach PR builds.
 
 ## Useful one-liners
 

@@ -1,12 +1,14 @@
 APP_NAME := Markee
 APP_BUNDLE := $(APP_NAME).app
 BIN := .build/release/$(APP_NAME)
+PREVIEW_BIN := .build/release/MarkeeQuickLookPreview
+THUMBNAIL_BIN := .build/release/MarkeeQuickLookThumbnail
 CONFIG := release
 
 INSTALLED_BUNDLE := /Applications/$(APP_BUNDLE)
 VENDOR_SENTINEL := Resources/web/vendor/.fetched
 
-.PHONY: all build app run clean fetch-vendor install install-cli icon test test-swift test-js
+.PHONY: all build app run notarize clean fetch-vendor install install-cli icon test test-swift test-js
 
 all: app
 
@@ -31,12 +33,25 @@ app: $(VENDOR_SENTINEL) build icon
 	cp $(BIN) $(APP_BUNDLE)/Contents/MacOS/$(APP_NAME)
 	cp Resources/Info.plist $(APP_BUNDLE)/Contents/Info.plist
 	cp Resources/AppIcon.icns $(APP_BUNDLE)/Contents/Resources/AppIcon.icns
+	cp Resources/DocIcon.icns $(APP_BUNDLE)/Contents/Resources/DocIcon.icns
 	cp -R Resources/web $(APP_BUNDLE)/Contents/Resources/
 	cp -R Resources/cli $(APP_BUNDLE)/Contents/Resources/
 	cp LICENSE $(APP_BUNDLE)/Contents/Resources/LICENSE
 	cp THIRD-PARTY-NOTICES.md $(APP_BUNDLE)/Contents/Resources/THIRD-PARTY-NOTICES.md
-	# Ad-hoc codesign so WKWebView and TCC don't barf
-	codesign --force --deep --sign - $(APP_BUNDLE) 2>/dev/null || true
+	# Assemble the Quick Look extensions into Contents/PlugIns/
+	mkdir -p $(APP_BUNDLE)/Contents/PlugIns/QuickLookPreview.appex/Contents/MacOS
+	mkdir -p $(APP_BUNDLE)/Contents/PlugIns/QuickLookPreview.appex/Contents/Resources
+	cp $(PREVIEW_BIN) $(APP_BUNDLE)/Contents/PlugIns/QuickLookPreview.appex/Contents/MacOS/MarkeeQuickLookPreview
+	cp Resources/QuickLookPreview-Info.plist $(APP_BUNDLE)/Contents/PlugIns/QuickLookPreview.appex/Contents/Info.plist
+	cp -R Resources/web $(APP_BUNDLE)/Contents/PlugIns/QuickLookPreview.appex/Contents/Resources/
+	mkdir -p $(APP_BUNDLE)/Contents/PlugIns/QuickLookThumbnail.appex/Contents/MacOS
+	mkdir -p $(APP_BUNDLE)/Contents/PlugIns/QuickLookThumbnail.appex/Contents/Resources
+	cp $(THUMBNAIL_BIN) $(APP_BUNDLE)/Contents/PlugIns/QuickLookThumbnail.appex/Contents/MacOS/MarkeeQuickLookThumbnail
+	cp Resources/QuickLookThumbnail-Info.plist $(APP_BUNDLE)/Contents/PlugIns/QuickLookThumbnail.appex/Contents/Info.plist
+	cp -R Resources/web $(APP_BUNDLE)/Contents/PlugIns/QuickLookThumbnail.appex/Contents/Resources/
+	# Sign the bundle: Developer ID + Hardened Runtime when an identity is
+	# available, ad-hoc otherwise. See scripts/sign-app.sh.
+	./scripts/sign-app.sh $(APP_BUNDLE)
 	@echo "Built $(APP_BUNDLE)"
 	@if [ -L "$(INSTALLED_BUNDLE)" ] || [ -d "$(INSTALLED_BUNDLE)" ]; then \
 		echo "Syncing to $(INSTALLED_BUNDLE)..."; \
@@ -54,6 +69,9 @@ install: app
 
 run: app
 	open $(APP_BUNDLE)
+
+notarize: app
+	./scripts/notarize-app.sh $(APP_BUNDLE)
 
 install-cli: app
 	@if [ -w /usr/local/bin ]; then \

@@ -3,17 +3,17 @@ import WebKit
 
 /// Serves files from the app bundle's Resources/web/ directory.
 /// URLs look like: markee-app://app/template.html, markee-app://app/vendor/katex/katex.min.css
-final class BundleSchemeHandler: NSObject, WKURLSchemeHandler {
-    static let scheme = "markee-app"
+public final class BundleSchemeHandler: NSObject, WKURLSchemeHandler {
+    public static let scheme = "markee-app"
     private let webRoot: URL
 
-    override init() {
+    public override init() {
         let resources = Bundle.main.resourceURL ?? Bundle.main.bundleURL
         self.webRoot = resources.appendingPathComponent("web", isDirectory: true)
         super.init()
     }
 
-    func webView(_ webView: WKWebView, start urlSchemeTask: WKURLSchemeTask) {
+    public func webView(_ webView: WKWebView, start urlSchemeTask: WKURLSchemeTask) {
         guard let url = urlSchemeTask.request.url else {
             urlSchemeTask.didFailWithError(URLError(.badURL)); return
         }
@@ -23,7 +23,7 @@ final class BundleSchemeHandler: NSObject, WKURLSchemeHandler {
         serve(fileURL: candidate, task: urlSchemeTask)
     }
 
-    func webView(_ webView: WKWebView, stop urlSchemeTask: WKURLSchemeTask) {}
+    public func webView(_ webView: WKWebView, stop urlSchemeTask: WKURLSchemeTask) {}
 
     private func serve(fileURL: URL, task: WKURLSchemeTask) {
         guard let requestURL = task.request.url else {
@@ -80,18 +80,18 @@ final class BundleSchemeHandler: NSObject, WKURLSchemeHandler {
 
 /// Serves files from a specific document directory. One instance per WebView.
 /// URLs look like: markee-doc://doc/image.png  → /path/to/doc-dir/image.png
-final class DocSchemeHandler: NSObject, WKURLSchemeHandler {
-    static let scheme = "markee-doc"
-    private(set) var docRoot: URL
+public final class DocSchemeHandler: NSObject, WKURLSchemeHandler {
+    public static let scheme = "markee-doc"
+    public private(set) var docRoot: URL
 
-    init(docRoot: URL) {
+    public init(docRoot: URL) {
         self.docRoot = docRoot
         super.init()
     }
 
-    func setDocRoot(_ url: URL) { self.docRoot = url }
+    public func setDocRoot(_ url: URL) { self.docRoot = url }
 
-    func webView(_ webView: WKWebView, start urlSchemeTask: WKURLSchemeTask) {
+    public func webView(_ webView: WKWebView, start urlSchemeTask: WKURLSchemeTask) {
         guard let url = urlSchemeTask.request.url else {
             urlSchemeTask.didFailWithError(URLError(.badURL)); return
         }
@@ -119,7 +119,7 @@ final class DocSchemeHandler: NSObject, WKURLSchemeHandler {
         }
     }
 
-    func webView(_ webView: WKWebView, stop urlSchemeTask: WKURLSchemeTask) {}
+    public func webView(_ webView: WKWebView, stop urlSchemeTask: WKURLSchemeTask) {}
 
     private func fail(task: WKURLSchemeTask, status: Int, message: String) {
         guard let requestURL = task.request.url,
@@ -146,7 +146,7 @@ final class DocSchemeHandler: NSObject, WKURLSchemeHandler {
 /// both sides. The boundary check uses a trailing slash so the sibling-dir
 /// attack is blocked. The exact-equal allowance covers the root-itself case
 /// (rare but possible if a request asks for the root directory).
-func resolveSandboxed(root: URL, requestPath: String) -> URL? {
+public func resolveSandboxed(root: URL, requestPath: String) -> URL? {
     var path = requestPath
     while path.hasPrefix("/") { path.removeFirst() }
     let decoded = path.removingPercentEncoding ?? path
@@ -158,7 +158,7 @@ func resolveSandboxed(root: URL, requestPath: String) -> URL? {
     return nil
 }
 
-func mimeType(for ext: String) -> String {
+public func mimeType(for ext: String) -> String {
     switch ext.lowercased() {
     case "html", "htm": return "text/html; charset=utf-8"
     case "js", "mjs": return "application/javascript; charset=utf-8"

@@ -221,14 +221,20 @@
         // Source-line indices are computed against the ORIGINAL source so they
         // match what's on disk (Swift reads the file fresh before toggling).
         const taskLines = collectTaskLineNumbers(String(payload.source || ""));
+        // readOnly (Quick Look) renders checkboxes non-interactive — a click
+        // there cannot write back to the file, so don't pretend it can.
+        const readOnly = !!payload.readOnly;
         const taskItems = article.querySelectorAll("li.task-list-item");
         taskItems.forEach((li, i) => {
             if (i >= taskLines.length) return;
             li.dataset.line = String(taskLines[i]);
             const cb = li.querySelector('input[type="checkbox"]');
             if (cb) {
-                cb.disabled = false;
-                cb.addEventListener("click", onTaskToggle);
+                if (readOnly) {
+                    cb.disabled = true;
+                } else {
+                    cb.addEventListener("click", onTaskToggle);
+                }
             }
         });
 
@@ -247,15 +253,11 @@
             } catch (e) { /* non-fatal */ }
         }
 
-        // Mermaid
-        if (window.mermaid) {
-            try {
-                // Reset processed flag on existing diagrams so re-render works
-                article.querySelectorAll("pre.mermaid").forEach((el) => {
-                    el.removeAttribute("data-processed");
-                });
-                window.mermaid.run({ querySelector: "#content pre.mermaid" }).catch(() => {});
-            } catch (e) { /* non-fatal */ }
+        // Mermaid — the 2.5 MB bundle is loaded on demand only when the
+        // document actually contains a diagram. Diagram-free renders never
+        // pay the parse cost (matters most for fresh Quick Look processes).
+        if (article.querySelector("pre.mermaid")) {
+            ensureMermaid(() => runMermaid(article));
         }
 
         // Restore scroll
@@ -274,6 +276,46 @@
     function scrollToHeading(id) {
         const el = document.getElementById(id);
         if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    // ---- lazy Mermaid -------------------------------------------------------
+    // "unloaded" | "loading" | "ready"
+    let mermaidState = "unloaded";
+    let mermaidWaiters = [];
+
+    // Load mermaid.min.js (UMD bundle — not the ESM split build) once. On load,
+    // dispatch markee:mermaid-ready (the existing listener runs mermaid.initialize
+    // synchronously during dispatch), THEN invoke each queued `then`. On failure
+    // the queue is dropped — diagrams stay as code — and a later render retries.
+    function ensureMermaid(then) {
+        if (mermaidState === "ready" && window.mermaid) { then(); return; }
+        mermaidWaiters.push(then);
+        if (mermaidState === "loading") return;
+        mermaidState = "loading";
+        const s = document.createElement("script");
+        s.src = "markee-app://app/vendor/mermaid/mermaid.min.js";
+        s.onload = () => {
+            mermaidState = "ready";
+            window.dispatchEvent(new Event("markee:mermaid-ready"));
+            const waiters = mermaidWaiters;
+            mermaidWaiters = [];
+            waiters.forEach((fn) => fn());
+        };
+        s.onerror = () => {
+            mermaidState = "unloaded";
+            mermaidWaiters = [];
+        };
+        document.head.appendChild(s);
+    }
+
+    function runMermaid(article) {
+        if (!window.mermaid) return;
+        try {
+            article.querySelectorAll("pre.mermaid").forEach((el) => {
+                el.removeAttribute("data-processed");
+            });
+            window.mermaid.run({ querySelector: "#content pre.mermaid" }).catch(() => {});
+        } catch (e) { /* non-fatal */ }
     }
 
     // ---- export standalone HTML --------------------------------------------
