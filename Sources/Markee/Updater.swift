@@ -43,3 +43,36 @@ struct AppVersion: Comparable, Sendable {
         return false
     }
 }
+
+/// The subset of a GitHub Release that Markee uses, decoded from the
+/// `/releases/latest` API response.
+struct GitHubRelease: Sendable {
+    let version: AppVersion
+    let tagName: String
+    let pageURL: URL
+    let zipURL: URL
+    let notes: String
+
+    /// Parse the GitHub `/releases/latest` JSON. Returns nil if the payload is
+    /// missing required fields or has no `Markee.app.zip` asset.
+    init?(json data: Data) {
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let tag = obj["tag_name"] as? String,
+              let version = AppVersion(tag),
+              let htmlURLString = obj["html_url"] as? String,
+              let pageURL = URL(string: htmlURLString),
+              let assets = obj["assets"] as? [[String: Any]]
+        else { return nil }
+
+        guard let zip = assets.first(where: { ($0["name"] as? String) == "Markee.app.zip" }),
+              let zipURLString = zip["browser_download_url"] as? String,
+              let zipURL = URL(string: zipURLString)
+        else { return nil }
+
+        self.version = version
+        self.tagName = tag
+        self.pageURL = pageURL
+        self.zipURL = zipURL
+        self.notes = (obj["body"] as? String) ?? ""
+    }
+}
