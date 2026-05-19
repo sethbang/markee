@@ -123,6 +123,7 @@ final class UpdateProgressPanel {
         panel.title = "Markee"
         panel.contentView = stack
         panel.center()
+        panel.standardWindowButton(.closeButton)?.isEnabled = false
     }
 
     func show() { panel.makeKeyAndOrderFront(nil) }
@@ -354,20 +355,29 @@ final class Updater {
         let script = """
         #!/bin/bash
         PID="$1"; NEW="$2"; DEST="$3"
-        while kill -0 "$PID" 2>/dev/null; do sleep 0.2; done
+        trap 'rm -f "$0"' EXIT
+        WAITED=0
+        while kill -0 "$PID" 2>/dev/null; do
+          sleep 0.2
+          WAITED=$((WAITED + 1))
+          if [ "$WAITED" -ge 300 ]; then break; fi
+        done
         BACKUP="${DEST}.old"
         rm -rf "$BACKUP"
         if ! mv "$DEST" "$BACKUP"; then
           open "$DEST" 2>/dev/null || true
           exit 1
         fi
-        if ditto "$NEW" "$DEST"; then
+        if /usr/bin/ditto "$NEW" "$DEST"; then
           rm -rf "$BACKUP"
           rm -rf "$(dirname "$NEW")"
           open "$DEST"
         else
           rm -rf "$DEST"
-          mv "$BACKUP" "$DEST"
+          if ! mv "$BACKUP" "$DEST"; then
+            osascript -e "display alert \\"Markee update failed\\" message \\"Could not restore Markee. Your previous version is saved at: $BACKUP\\"" 2>/dev/null || true
+            exit 2
+          fi
           open "$DEST"
           exit 1
         fi
