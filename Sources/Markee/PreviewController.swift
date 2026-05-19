@@ -1,5 +1,6 @@
 import SwiftUI
 import WebKit
+import MarkeeKit
 
 /// Discrete zoom rungs, browser-style. Zoom commands only ever land the
 /// page on one of these values.
