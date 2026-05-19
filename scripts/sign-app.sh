@@ -18,14 +18,17 @@ if [ ! -d "$APP" ]; then
     exit 1
 fi
 
-# Resolve the signing identity: explicit override, else first Developer ID
-# Application identity in the keychain search list.
+# Resolve the signing identity: explicit override ($CODESIGN_IDENTITY, a name
+# or a SHA-1 hash), else the first Developer ID Application identity in the
+# keychain. Auto-detection matches by SHA-1 hash (field 2) rather than name:
+# a keychain may hold more than one cert with the same name, and codesign
+# rejects an ambiguous name.
 IDENTITY="${CODESIGN_IDENTITY:-}"
 if [ -z "$IDENTITY" ]; then
     IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null \
         | grep "Developer ID Application" \
         | head -1 \
-        | sed -E 's/.*"(.+)"$/\1/')
+        | awk '{print $2}')
 fi
 
 PREVIEW_APPEX="$APP/Contents/PlugIns/QuickLookPreview.appex"
