@@ -28,13 +28,13 @@ jobs:
   build-test:
     name: Build + test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    # GitHub retired the macos-13 hosted runner, so we build on the two
-    # current images. The macOS 13 floor (LSMinimumSystemVersion) is enforced
-    # at compile time, not by the runner OS.
+    # Build across the current hosted macOS images (all Apple Silicon). The
+    # macOS 13 floor (LSMinimumSystemVersion) is enforced at compile time, not
+    # by the runner OS — building on a newer runner still targets macOS 13+.
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14, macos-15]
+        os: [macos-14, macos-15, macos-26]
     steps:
       - uses: actions/checkout@v6
 
