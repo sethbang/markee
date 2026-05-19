@@ -25,10 +25,12 @@ fi
 # rejects an ambiguous name.
 IDENTITY="${CODESIGN_IDENTITY:-}"
 if [ -z "$IDENTITY" ]; then
+    # Match by SHA-1 hash (field 2), not name: a keychain may hold more than
+    # one cert with the same name, and codesign rejects an ambiguous name.
+    # A single awk (no grep) prints nothing and exits 0 on no match, so the
+    # ad-hoc fallback below stays reachable under `set -euo pipefail`.
     IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null \
-        | grep "Developer ID Application" \
-        | head -1 \
-        | awk '{print $2}')
+        | awk '/Developer ID Application/ { print $2; exit }')
 fi
 
 PREVIEW_APPEX="$APP/Contents/PlugIns/QuickLookPreview.appex"
@@ -45,7 +47,7 @@ fi
 # Sign inside-out: nested extensions first, then the app. `codesign --deep` is
 # deprecated and seals nested code unreliably — sign each item explicitly.
 for item in "$PREVIEW_APPEX" "$THUMBNAIL_APPEX" "$APP"; do
-    if [ -e "$item" ]; then
+    if [ -d "$item" ]; then
         echo "sign-app: signing $item"
         codesign "${SIGN_ARGS[@]}" "$item"
     fi
