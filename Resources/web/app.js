@@ -221,14 +221,21 @@
         // Source-line indices are computed against the ORIGINAL source so they
         // match what's on disk (Swift reads the file fresh before toggling).
         const taskLines = collectTaskLineNumbers(String(payload.source || ""));
+        // readOnly (Quick Look) renders checkboxes non-interactive — a click
+        // there cannot write back to the file, so don't pretend it can.
+        const readOnly = !!payload.readOnly;
         const taskItems = article.querySelectorAll("li.task-list-item");
         taskItems.forEach((li, i) => {
             if (i >= taskLines.length) return;
             li.dataset.line = String(taskLines[i]);
             const cb = li.querySelector('input[type="checkbox"]');
             if (cb) {
-                cb.disabled = false;
-                cb.addEventListener("click", onTaskToggle);
+                if (readOnly) {
+                    cb.disabled = true;
+                } else {
+                    cb.disabled = false;
+                    cb.addEventListener("click", onTaskToggle);
+                }
             }
         });
 
