@@ -1,6 +1,8 @@
 APP_NAME := Markee
 APP_BUNDLE := $(APP_NAME).app
 BIN := .build/release/$(APP_NAME)
+PREVIEW_BIN := .build/release/MarkeeQuickLookPreview
+THUMBNAIL_BIN := .build/release/MarkeeQuickLookThumbnail
 CONFIG := release
 
 INSTALLED_BUNDLE := /Applications/$(APP_BUNDLE)
@@ -31,10 +33,22 @@ app: $(VENDOR_SENTINEL) build icon
 	cp $(BIN) $(APP_BUNDLE)/Contents/MacOS/$(APP_NAME)
 	cp Resources/Info.plist $(APP_BUNDLE)/Contents/Info.plist
 	cp Resources/AppIcon.icns $(APP_BUNDLE)/Contents/Resources/AppIcon.icns
+	cp Resources/DocIcon.icns $(APP_BUNDLE)/Contents/Resources/DocIcon.icns
 	cp -R Resources/web $(APP_BUNDLE)/Contents/Resources/
 	cp -R Resources/cli $(APP_BUNDLE)/Contents/Resources/
 	cp LICENSE $(APP_BUNDLE)/Contents/Resources/LICENSE
 	cp THIRD-PARTY-NOTICES.md $(APP_BUNDLE)/Contents/Resources/THIRD-PARTY-NOTICES.md
+	# Assemble the Quick Look extensions into Contents/PlugIns/
+	mkdir -p $(APP_BUNDLE)/Contents/PlugIns/QuickLookPreview.appex/Contents/MacOS
+	mkdir -p $(APP_BUNDLE)/Contents/PlugIns/QuickLookPreview.appex/Contents/Resources
+	cp $(PREVIEW_BIN) $(APP_BUNDLE)/Contents/PlugIns/QuickLookPreview.appex/Contents/MacOS/MarkeeQuickLookPreview
+	cp Resources/QuickLookPreview-Info.plist $(APP_BUNDLE)/Contents/PlugIns/QuickLookPreview.appex/Contents/Info.plist
+	cp -R Resources/web $(APP_BUNDLE)/Contents/PlugIns/QuickLookPreview.appex/Contents/Resources/
+	mkdir -p $(APP_BUNDLE)/Contents/PlugIns/QuickLookThumbnail.appex/Contents/MacOS
+	mkdir -p $(APP_BUNDLE)/Contents/PlugIns/QuickLookThumbnail.appex/Contents/Resources
+	cp $(THUMBNAIL_BIN) $(APP_BUNDLE)/Contents/PlugIns/QuickLookThumbnail.appex/Contents/MacOS/MarkeeQuickLookThumbnail
+	cp Resources/QuickLookThumbnail-Info.plist $(APP_BUNDLE)/Contents/PlugIns/QuickLookThumbnail.appex/Contents/Info.plist
+	cp -R Resources/web $(APP_BUNDLE)/Contents/PlugIns/QuickLookThumbnail.appex/Contents/Resources/
 	# Ad-hoc codesign so WKWebView and TCC don't barf
 	codesign --force --deep --sign - $(APP_BUNDLE) 2>/dev/null || true
 	@echo "Built $(APP_BUNDLE)"
