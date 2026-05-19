@@ -117,6 +117,15 @@ Reproduce + capture logs before public release.
 
 Do **not** symlink /Applications/Markee.app → repo path. Finder's "Other…" picker won't let users select symlinked apps even in "All Applications" mode (we confirmed this in the May 2026 session).
 
+### 4. Quick Look extension signing & sandboxing
+
+The Quick Look preview/thumbnail extensions (`Contents/PlugIns/*.appex`, added in the Finder-integration work) load and register locally with ad-hoc signing, but two things must change before notarized distribution:
+
+- **Sign inside-out.** `make app` relies on `codesign --force --deep` to sign the nested `.appex` bundles along with the app. `--deep` is fine for ad-hoc local builds but is unreliable (and Apple-discouraged) for real signing — for Developer ID / notarization each `.appex` must be signed first, then the app.
+- **Add App Sandbox entitlements.** The extensions ship with no `.entitlements`. Quick Look extension hosts expect a sandboxed extension (`com.apple.security.app-sandbox` plus the read grant for the previewed file). Unsandboxed ad-hoc extensions load on the dev machine but a real signature will need these.
+
+Same root cause as issues 1–3: no Apple Developer ID. Tracked here so it isn't rediscovered at release time.
+
 ## Useful one-liners
 
 ```sh
