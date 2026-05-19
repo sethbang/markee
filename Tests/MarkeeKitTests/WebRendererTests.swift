@@ -14,4 +14,17 @@ final class WebRendererTests: XCTestCase {
         renderer.loadTemplate()
         XCTAssertNotNil(renderer.webView.configuration)
     }
+
+    func test_deallocatesAfterLastReference() {
+        weak var weakRenderer: WebRenderer?
+        autoreleasepool {
+            let renderer = WebRenderer(docRoot: URL(fileURLWithPath: "/tmp"))
+            weakRenderer = renderer
+            XCTAssertNotNil(weakRenderer)
+        }
+        // Drain autorelease pools / let WebKit settle.
+        RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        XCTAssertNil(weakRenderer,
+                     "WebRenderer must not be retained by its own WKWebView's message handler")
+    }
 }
