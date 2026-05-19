@@ -123,7 +123,8 @@ final class UpdateProgressPanel {
         panel.title = "Markee"
         panel.contentView = stack
         panel.center()
-        panel.standardWindowButton(.closeButton)?.isEnabled = false
+        // No close button: styleMask is `.titled` only (no `.closable`), so the
+        // panel can't be dismissed mid-update — which would orphan the download.
     }
 
     func show() { panel.makeKeyAndOrderFront(nil) }
@@ -153,18 +154,15 @@ final class Updater {
 
     /// Once-a-day silent launch check. Throttled by a UserDefaults timestamp.
     func checkOnLaunch() {
-        let now = Date()
         if let last = UserDefaults.standard.object(forKey: Self.lastCheckKey) as? Date,
-           now.timeIntervalSince(last) < 24 * 60 * 60 {
+           Date().timeIntervalSince(last) < 24 * 60 * 60 {
             return
         }
-        UserDefaults.standard.set(now, forKey: Self.lastCheckKey)
         Task { await check(userInitiated: false) }
     }
 
     /// "Check for Updates…" menu action. Always reports its result.
     func checkForUpdatesMenuAction() {
-        UserDefaults.standard.set(Date(), forKey: Self.lastCheckKey)
         Task { await check(userInitiated: true) }
     }
 
@@ -182,6 +180,10 @@ final class Updater {
             }
             return
         }
+        // Stamp the throttle only after a successful fetch, so a check that
+        // fails (offline, GitHub down) is retried on the next launch rather
+        // than suppressed for 24h.
+        UserDefaults.standard.set(Date(), forKey: Self.lastCheckKey)
 
         guard release.version > currentVersion else {
             if userInitiated { presentUpToDate() }
@@ -199,6 +201,7 @@ final class Updater {
     nonisolated static func fetchLatestRelease(repo: String) async throws -> GitHubRelease {
         var request = URLRequest(url: URL(string: "https://api.github.com/repos/\(repo)/releases/latest")!)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             throw UpdaterError.badResponse
