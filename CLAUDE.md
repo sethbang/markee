@@ -87,6 +87,8 @@ Visual identity redesign. Integrated window chrome (no system titlebar divider, 
 
 ### 1. Open With picker grays out Markee; not in "Recommended Applications"
 
+**Status: RESOLVED — the app is now Developer ID signed and notarized (see "Signing & notarization" below), so `spctl -a` passes and the picker enables Markee normally. The diagnosis below is kept for historical context.**
+
 **Symptom.** Right-click .md → Open With → Other… shows Markee grayed out under "Recommended Applications" *and* under "All Applications". The bundle is registered, the binding is correct, and `open -Ra Markee` works — but the picker UI refuses to let users select it.
 
 **Why.** macOS (Sonoma+) gates the Open With picker on a Gatekeeper assessment (`spctl -a`). Ad-hoc signed apps fail this assessment. Self-signed certs — even trusted system-wide via `security add-trusted-cert -p codeSign` — *also* fail, because `spctl -a` specifically requires Apple's CA chain (Developer ID Application or notarized). There is no purely-local workaround. Note also: every file in the bundle carries `com.apple.provenance` xattr that `xattr -cr` cannot remove on Sonoma+; this is kernel-managed and Apple intends for it to stay.
@@ -117,14 +119,36 @@ Reproduce + capture logs before public release.
 
 Do **not** symlink /Applications/Markee.app → repo path. Finder's "Other…" picker won't let users select symlinked apps even in "All Applications" mode (we confirmed this in the May 2026 session).
 
-### 4. Quick Look extension signing & sandboxing
+### 4. Quick Look extensions need a notarized app — RESOLVED
 
-The Quick Look preview/thumbnail extensions (`Contents/PlugIns/*.appex`, added in the Finder-integration work) load and register locally with ad-hoc signing, but two things must change before notarized distribution:
+The Quick Look preview/thumbnail extensions (`Contents/PlugIns/*.appex`) only register with `pkd` when the host app passes Gatekeeper. Ad-hoc signing does **not** work — `pkd` silently refuses to register the extensions and `pluginkit -a` no-ops. This is resolved by Developer ID signing + notarization (see "Signing & notarization" below): a notarized build passes `spctl -a`, `pkd` registers the extensions, and Quick Look + the document icon work.
 
-- **Sign inside-out.** `make app` relies on `codesign --force --deep` to sign the nested `.appex` bundles along with the app. `--deep` is fine for ad-hoc local builds but is unreliable (and Apple-discouraged) for real signing — for Developer ID / notarization each `.appex` must be signed first, then the app.
-- **Add App Sandbox entitlements.** The extensions ship with no `.entitlements`. Quick Look extension hosts expect a sandboxed extension (`com.apple.security.app-sandbox` plus the read grant for the previewed file). Unsandboxed ad-hoc extensions load on the dev machine but a real signature will need these.
+## Signing & notarization
 
-Same root cause as issues 1–3: no Apple Developer ID. Tracked here so it isn't rediscovered at release time.
+Markee is distributed as a Developer-ID-signed, notarized app. Both the app and
+its two Quick Look `.appex` extensions are signed with the **Developer ID
+Application** certificate and the Hardened Runtime, then the bundle is notarized
+by Apple and the ticket stapled.
+
+- `scripts/sign-app.sh` signs the bundle inside-out. With a Developer ID
+  identity in the keychain it signs Developer ID + Hardened Runtime; with none
+  it falls back to ad-hoc (so CI build-test and contributors still build).
+- `scripts/notarize-app.sh` zips, submits to `notarytool`, and staples.
+- `make app` signs; `make notarize` builds + signs + notarizes + staples.
+
+**Local setup (one-time):**
+- Install the "Developer ID Application" certificate in your login keychain
+  (Xcode → Settings → Accounts → Manage Certificates, or the developer portal).
+- Store the App Store Connect API key as a notarytool keychain profile:
+  `xcrun notarytool store-credentials markee-notary --key <AuthKey.p8> --key-id <KEY_ID> --issuer <ISSUER_ID>`
+- Then `NOTARY_KEYCHAIN_PROFILE=markee-notary make notarize` produces a
+  notarized, stapled bundle.
+
+**CI:** `release.yml` (tag-triggered) imports the cert and notarizes
+automatically. It needs five repo secrets: `MACOS_CERT_P12` (base64 of the
+Developer ID `.p12`), `MACOS_CERT_PASSWORD`, `NOTARY_KEY_P8` (base64 of the API
+key `.p8`), `NOTARY_KEY_ID`, `NOTARY_ISSUER_ID`. `ci.yml` (push/PR) stays
+ad-hoc — signing secrets must never reach PR builds.
 
 ## Useful one-liners
 

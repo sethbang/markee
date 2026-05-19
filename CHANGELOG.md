@@ -7,6 +7,10 @@ All notable changes to Markee are documented here. Format roughly follows
 ## [0.5.0] — 2026-05-18
 
 ### Added
+- Developer ID code signing and notarization. The app and its Quick Look
+  preview/thumbnail extensions are now signed and notarized, so Quick Look
+  rendering, per-file thumbnails, and the Markdown document icon work without
+  Gatekeeper warnings.
 - **Copy Markdown Source (⌘⇧C)** — copy the file's raw Markdown to the
   clipboard, read fresh from disk. In the File menu and the preview
   right-click menu.

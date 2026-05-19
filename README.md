@@ -55,17 +55,8 @@ Download `Markee.app.zip` from the latest
 [GitHub Release](https://github.com/sethbangert/markee/releases), unzip, drag
 into `/Applications`.
 
-**First launch — Gatekeeper warning.** Markee is ad-hoc codesigned, not
-notarized with an Apple Developer ID yet. The first time you open it, macOS
-will say *"`Markee` can't be opened because Apple cannot check it for
-malicious software."* Two ways past it:
-
-- **Right-click** `Markee.app` in Finder → **Open** → **Open** in the dialog.
-  You only need to do this once; subsequent launches go straight through.
-- Or, in Terminal: `xattr -dr com.apple.quarantine /Applications/Markee.app`,
-  then double-click as normal.
-
-Notarization is on the roadmap.
+Release builds are Developer ID signed and notarized, so they open normally
+with a double-click — no Gatekeeper warning, no right-click workaround needed.
 
 ### From source
 
@@ -170,9 +161,8 @@ inside the WebView; Swift just streams the file's source into
 
 ## Status
 
-v0.4.0 — Zoom (⌘+/⌘-/⌘0), Find Next/Previous (⌘G/⌘⇧G), and Reload (⌘R).
-See [CHANGELOG.md](CHANGELOG.md) for the full release history. Not yet signed
-with a Developer ID or notarized.
+v0.5.0 — see [CHANGELOG.md](CHANGELOG.md) for the full release history.
+Developer ID signed and notarized.
 
 ## Contributing
 
