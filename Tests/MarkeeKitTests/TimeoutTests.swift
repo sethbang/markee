@@ -12,7 +12,7 @@ final class TimeoutTests: XCTestCase {
 
     func test_throwsTimeoutError_whenOperationIsTooSlow() async {
         do {
-            _ = try await withTimeout(seconds: 0.05) {
+            _ = try await withTimeout(seconds: 0.2) {
                 try await Task.sleep(nanoseconds: 1_000_000_000) // 1 s
                 return 1
             }

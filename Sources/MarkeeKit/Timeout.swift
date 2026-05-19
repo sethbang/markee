@@ -15,11 +15,14 @@ public func withTimeout<T: Sendable>(
     try await withThrowingTaskGroup(of: T.self) { group in
         group.addTask { try await operation() }
         group.addTask {
-            try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            try await Task.sleep(for: .seconds(seconds))
             throw TimeoutError()
         }
-        let result = try await group.next()!
-        group.cancelAll()
-        return result
+        // First task to finish wins; cancel the loser before returning.
+        for try await result in group {
+            group.cancelAll()
+            return result
+        }
+        throw TimeoutError() // unreachable: the group always holds two tasks
     }
 }
