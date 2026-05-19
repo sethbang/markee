@@ -40,7 +40,7 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
     @Published var findQuery: String = ""
     @Published var findNotFound: Bool = false
 
-    let webView: WKWebView
+    let webView: MarkeeWebView
     let bundleHandler = BundleSchemeHandler()
     let docHandler: DocSchemeHandler
 
@@ -69,8 +69,10 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
         config.setURLSchemeHandler(bundleHandler, forURLScheme: BundleSchemeHandler.scheme)
         config.setURLSchemeHandler(docHandler, forURLScheme: DocSchemeHandler.scheme)
 
-        self.webView = WKWebView(frame: .zero, configuration: config)
+        self.webView = MarkeeWebView(frame: .zero, configuration: config)
         super.init()
+
+        self.webView.controller = self
 
         userContent.add(self, name: "markee")
         self.webView.navigationDelegate = self
