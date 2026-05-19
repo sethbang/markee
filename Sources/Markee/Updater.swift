@@ -97,6 +97,39 @@ enum UpdaterError: LocalizedError {
 
 import AppKit
 
+/// A minimal modal-free panel shown while an update downloads and installs.
+@MainActor
+final class UpdateProgressPanel {
+    private let panel: NSPanel
+    private let label: NSTextField
+
+    init() {
+        label = NSTextField(labelWithString: "Downloading update…")
+        label.alignment = .center
+
+        let spinner = NSProgressIndicator()
+        spinner.style = .spinning
+        spinner.isIndeterminate = true
+        spinner.startAnimation(nil)
+
+        let stack = NSStackView(views: [spinner, label])
+        stack.orientation = .vertical
+        stack.spacing = 14
+        stack.edgeInsets = NSEdgeInsets(top: 24, left: 32, bottom: 24, right: 32)
+
+        panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 280, height: 130),
+            styleMask: [.titled], backing: .buffered, defer: false)
+        panel.title = "Markee"
+        panel.contentView = stack
+        panel.center()
+    }
+
+    func show() { panel.makeKeyAndOrderFront(nil) }
+    func setMessage(_ text: String) { label.stringValue = text }
+    func close() { panel.close() }
+}
+
 @MainActor
 final class Updater {
     static let shared = Updater()
@@ -274,7 +307,84 @@ final class Updater {
         return bundle
     }
 
-    // MARK: - Install (implemented in Task 9)
+    // MARK: - Install
 
-    func installUpdate(_ release: GitHubRelease) async {}
+    func installUpdate(_ release: GitHubRelease) async {
+        let installPath = Bundle.main.bundlePath
+        let parent = (installPath as NSString).deletingLastPathComponent
+        guard FileManager.default.isWritableFile(atPath: parent) else {
+            presentManualFallback(release, reason: "Markee can't replace itself from this location.")
+            return
+        }
+
+        let progress = UpdateProgressPanel()
+        progress.show()
+
+        let stagedBundle: URL
+        do {
+            stagedBundle = try await Self.downloadAndStage(release)
+        } catch {
+            progress.close()
+            presentManualFallback(release, reason: error.localizedDescription)
+            return
+        }
+
+        progress.setMessage("Installing update…")
+        do {
+            try Self.stripQuarantine(stagedBundle)
+            try Self.launchSwapHelper(newBundle: stagedBundle, installPath: installPath)
+        } catch {
+            progress.close()
+            presentManualFallback(release, reason: error.localizedDescription)
+            return
+        }
+
+        // The helper waits for this process to exit, then swaps and relaunches.
+        NSApp.terminate(nil)
+    }
+
+    nonisolated static func stripQuarantine(_ bundle: URL) throws {
+        try runProcess("/usr/bin/xattr", ["-dr", "com.apple.quarantine", bundle.path])
+    }
+
+    /// Write a detached shell helper that waits for this process to quit, swaps
+    /// the bundle in place (keeping a `.old` backup until success), and
+    /// relaunches. The helper outlives this process by design — not waited on.
+    nonisolated static func launchSwapHelper(newBundle: URL, installPath: String) throws {
+        let script = """
+        #!/bin/bash
+        PID="$1"; NEW="$2"; DEST="$3"
+        while kill -0 "$PID" 2>/dev/null; do sleep 0.2; done
+        BACKUP="${DEST}.old"
+        rm -rf "$BACKUP"
+        if ! mv "$DEST" "$BACKUP"; then
+          open "$DEST" 2>/dev/null || true
+          exit 1
+        fi
+        if ditto "$NEW" "$DEST"; then
+          rm -rf "$BACKUP"
+          rm -rf "$(dirname "$NEW")"
+          open "$DEST"
+        else
+          rm -rf "$DEST"
+          mv "$BACKUP" "$DEST"
+          open "$DEST"
+          exit 1
+        fi
+        """
+        let scriptURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("markee-swap-\(UUID().uuidString).sh")
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/bash")
+        process.arguments = [
+            scriptURL.path,
+            String(ProcessInfo.processInfo.processIdentifier),
+            newBundle.path,
+            installPath,
+        ]
+        try process.run()
+        // Intentionally not waited on — it must outlive this process.
+    }
 }
