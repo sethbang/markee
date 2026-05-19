@@ -17,7 +17,7 @@ jobs:
     name: SwiftLint
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install SwiftLint
         run: brew install swiftlint
@@ -36,10 +36,10 @@ jobs:
       matrix:
         os: [macos-14, macos-15]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Cache vendored JS/CSS
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: Resources/web/vendor
           key: vendor-${{ runner.os }}-${{ hashFiles('scripts/fetch-vendor.sh') }}
@@ -68,7 +68,7 @@ jobs:
           test -d Markee.app/Contents/Resources/web/vendor
 
       - name: Upload .app artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Markee.app-${{ matrix.os }}-${{ github.sha }}
           path: Markee.app
