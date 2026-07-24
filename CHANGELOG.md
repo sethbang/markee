@@ -4,6 +4,18 @@ All notable changes to Markee are documented here. Format roughly follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Optional Polar.sh supporter license** with a local-only usage-stats drawer.
+  Nothing is feature-gated; supporting only silences the throttled nudges. A key
+  is redeemed once through Polar's activation endpoint and covers up to 3 Macs;
+  free a slot any time from the Polar customer portal. Built and tested, but
+  dormant in 1.1.0 — no organization is configured, so the heart, the menu
+  entries, and the monthly support doc stay hidden until go-live.
+- **Developer Debug menu** (`MARKEE_DEV_TOOLS=1`) for exercising licensing
+  state locally without contacting Polar.
+
 ## [1.1.0] — 2026-07-24
 
 ### Added
@@ -20,10 +32,6 @@ All notable changes to Markee are documented here. Format roughly follows
   heading anchor links, and a live word-count pill.
 - **Export PDF… (⇧⌘E)** — write the rendered document straight to a PDF,
   alongside the existing Export Standalone HTML.
-- **Optional Polar.sh supporter license** with a local-only usage-stats drawer.
-  Nothing is feature-gated; supporting only silences the throttled nudges. A key
-  is redeemed once through Polar's activation endpoint and covers up to 3 Macs;
-  free a slot any time from the Polar customer portal.
 - **Commercial / Team license materials** (`COMMERCIAL.md`,
   `docs/commercial-agreement-template.md`).
 
@@ -35,8 +43,6 @@ All notable changes to Markee are documented here. Format roughly follows
   Highlight API — no DOM mutation, so highlights never leak into Export/Print.
 - `fetch-vendor.sh` now verifies every downloaded library against a pinned
   SHA-256 manifest (`scripts/vendor.sha256`) and fails on mismatch.
-- Supporter copy now states the real $1.99 minimum and the 3-Mac allowance, and
-  no longer describes a dismissible banner that was never built.
 
 ### Removed
 - The "Stay Visible in Full Screen" pinning option — unachievable for Markee's

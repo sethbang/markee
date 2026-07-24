@@ -1,6 +1,7 @@
-# Supporter checkout. The app's Support button and the bundled support doc both
-# point at /support, so this rule is load-bearing for the whole paid path.
-/support   https://buy.polar.sh/polar_cl_v9SHG98qWgV4XbtIjDZ9SVESE34WPHiLYxXMi4Wf3Zc  302
+# Supporter checkout is intentionally absent: the Polar organization is still
+# in test mode pending identity verification, so this route would send people
+# to a checkout that cannot accept payment. Restore it, together with the
+# footer link and SupportConfig.productionOrganizationID, at licensing go-live.
 /releases  https://github.com/sethbang/markee/releases  302
 /repo      https://github.com/sethbang/markee           302
 /docs      https://github.com/sethbang/markee#readme    302
