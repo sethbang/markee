@@ -1,5 +1,6 @@
 import SwiftUI
 import WebKit
+import UniformTypeIdentifiers
 import MarkeeKit
 
 /// Discrete zoom rungs, browser-style. Zoom commands only ever land the
@@ -33,6 +34,11 @@ struct OutlineEntry: Identifiable, Hashable {
 
 @MainActor
 final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandler, WKNavigationDelegate {
+    enum SidebarMode { case outline, files }
+    @Published var sidebarMode: SidebarMode = .outline {
+        didSet { if sidebarMode == .files { workspace.rebuild() } }   // refresh on show
+    }
+
     @Published var outline: [OutlineEntry] = []
     @Published var errorBanner: String? = nil
     @Published var showOutline: Bool = false
@@ -40,21 +46,39 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
     @Published var showFindBar: Bool = false
     @Published var findQuery: String = ""
     @Published var findNotFound: Bool = false
+    @Published var findCurrent: Int = 0
+    @Published var findTotal: Int = 0   // -1 = total unknown (fallback path)
+    @Published var pinState = WindowPinState()
+    @Published var docWords: Int = 0
+    @Published var docMinutes: Int = 0
+    @Published var statsPillVisible: Bool = false
+    private var statsHideWork: DispatchWorkItem?
+    @Published var showSearchPalette: Bool = false
+    @Published var searchQuery: String = "" { didSet { scheduleSearch() } }
+    @Published var searchResults: [WorkspaceSearch.Result] = []
+    private var searchWork: DispatchWorkItem?
 
     let webView: MarkeeWebView
     let bundleHandler = BundleSchemeHandler()
     let docHandler: DocSchemeHandler
 
-    private(set) var fileURL: URL
+    @Published private(set) var fileURL: URL
+    let workspace: WorkspaceModel
     private var watcher: FileWatcher?
     private var lastGoodSource: String = ""
     private var templateLoaded = false
     private var pendingRender: String?
     private var saveExportPanel: NSSavePanel?
+    private var didApplyInitialPin = false
+    private var indexPopulated = false
+    // Applies pinState to the NSWindow; mutate pinState first, then call update.
+    private lazy var pinController = WindowPinController(
+        windowProvider: { [weak self] in self?.webView.window })
 
     init(fileURL: URL) {
         self.fileURL = fileURL
-        self.docHandler = DocSchemeHandler(docRoot: fileURL.deletingLastPathComponent())
+        self.workspace = WorkspaceModel(documentURL: fileURL)
+        self.docHandler = DocSchemeHandler(docRoot: workspace.root)
 
         let config = WKWebViewConfiguration()
         let prefs = WKPreferences()
@@ -73,7 +97,12 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
         self.webView = MarkeeWebView(frame: .zero, configuration: config)
         super.init()
 
+        if SettingsStore.shared.defaultFloatOnTop {
+            self.pinState.floatOnTop = true
+        }
+
         self.webView.controller = self
+        self.workspace.onIndexUpdated = { [weak self] in self?.reRenderForIndexIfNeeded() }
 
         userContent.add(self, name: "markee")
         self.webView.navigationDelegate = self
@@ -82,6 +111,7 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
         loadTemplate()
         startWatching()
         loadFromDisk(reason: "initial")
+        self.history = NavigationHistory(initial: fileURL)
 
         NotificationCenter.default.addObserver(
             self, selector: #selector(handleToggleOutline),
@@ -89,6 +119,9 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
         NotificationCenter.default.addObserver(
             self, selector: #selector(handleExportHTML),
             name: .exportHTML, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleExportPDF),
+            name: .exportPDF, object: nil)
         NotificationCenter.default.addObserver(
             self, selector: #selector(handleOpenInEditor),
             name: .openInEditor, object: nil)
@@ -123,13 +156,108 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
             self, selector: #selector(handleCopyMarkdownSource),
             name: .copyMarkdownSource, object: nil)
         NotificationCenter.default.addObserver(
+            self, selector: #selector(handleCopyReflowedMarkdown),
+            name: .copyReflowedMarkdown, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleCopyRenderedText),
+            name: .copyRenderedText, object: nil)
+        NotificationCenter.default.addObserver(
             self, selector: #selector(handleRevealInFinder),
             name: .revealInFinder, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleToggleFloatOnTop),
+            name: .toggleFloatOnTop, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleToggleAllSpaces),
+            name: .toggleAllSpaces, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleToggleFollowActive),
+            name: .toggleFollowActive, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleToggleGhostMode),
+            name: .toggleGhostMode, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleSettingsDidChange),
+            name: .settingsDidChange, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleGoBack), name: .navigateBack, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleGoForward), name: .navigateForward, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleOpenFolder), name: .openFolder, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleSearchPalette), name: .searchPalette, object: nil)
+        UsageTracker.shared.recordDocumentOpened(fileURL)
+    }
+
+    /// Navigate the current window to a file picked in the tree.
+    func openFromTree(_ url: URL) {
+        handleTreeNavigate(to: url)
+    }
+    private func handleTreeNavigate(to url: URL) {
+        if history == nil { history = NavigationHistory(initial: fileURL) }
+        history.push(url)
+        navigate(to: url, fragment: "")
+    }
+
+    @objc private func handleOpenFolder() {
+        guard webView.window?.isKeyWindow == true else { return }
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Set Workspace"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        workspace.setRoot(url)
+        docHandler.setDocRoot(workspace.root)
+        sidebarMode = .files
+        showOutline = true
+        loadFromDisk(reason: "open-folder")   // re-render with the new base/index
+    }
+
+    @objc private func handleSearchPalette() {
+        guard webView.window?.isKeyWindow == true else { return }
+        workspace.rebuild()        // refresh the file list before searching
+        showSearchPalette = true
+    }
+
+    private func scheduleSearch() {
+        searchWork?.cancel()
+        let query = searchQuery
+        let files = workspace.markdownFiles
+        guard !query.trimmingCharacters(in: .whitespaces).isEmpty else {
+            searchResults = []; return
+        }
+        let work = DispatchWorkItem { [weak self] in
+            let results = WorkspaceSearch.search(query: query, files: files)
+            DispatchQueue.main.async { self?.searchResults = results }
+        }
+        searchWork = work
+        DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.15, execute: work)
+    }
+
+    func chooseSearchResult(_ result: WorkspaceSearch.Result) {
+        showSearchPalette = false
+        searchQuery = ""
+        searchResults = []
+        if history == nil { history = NavigationHistory(initial: fileURL) }
+        history.push(result.url)
+        navigate(to: result.url, fragment: "")
     }
 
     deinit {
         watcher?.cancel()
         NotificationCenter.default.removeObserver(self)
+    }
+
+    /// Re-render the current document the first time the workspace index
+    /// populates, so wiki-links in the initially-shown doc resolve. Guarded so
+    /// later refreshes (Files tab / palette open) never re-render what the user
+    /// is reading.
+    private func reRenderForIndexIfNeeded() {
+        guard !indexPopulated, !workspace.wikiIndex.isEmpty else { return }
+        indexPopulated = true
+        loadFromDisk(reason: "index-ready")
     }
 
     // MARK: - Template load
@@ -149,6 +277,7 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
     private func startWatching() {
         watcher?.cancel()
         watcher = FileWatcher(url: fileURL) { [weak self] in
+            UsageTracker.shared.recordRerender()
             self?.loadFromDisk(reason: "fs-change")
         }
     }
@@ -173,11 +302,21 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
             pendingRender = source
             return
         }
-        let payload: [String: Any] = [
+        var payload: [String: Any] = [
             "source": source,
             "fileName": fileURL.lastPathComponent,
-            "docBase": "\(DocSchemeHandler.scheme)://doc/"
+            "docBase": WorkspaceModel.docBase(for: fileURL, root: workspace.root),
+            "wikiIndex": workspace.wikiIndex,
+            "readOnly": false
         ]
+        if pendingNavigated {
+            payload["navigated"] = true
+            pendingNavigated = false
+        }
+        if !pendingScrollTo.isEmpty {
+            payload["scrollTo"] = pendingScrollTo
+            pendingScrollTo = ""
+        }
         guard let data = try? JSONSerialization.data(withJSONObject: payload),
               let json = String(data: data, encoding: .utf8) else {
             return
@@ -211,7 +350,9 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
     }
 
     /// Reveal the in-app find bar. macOS WKWebView has no built-in find UI, so
-    /// PreviewView's FindBar drives webView.find(_:configuration:) directly.
+    /// the FindBar drives the JS find engine (window.markee.find) via
+    /// evaluateJavaScript; matches are painted with the CSS Custom Highlight API
+    /// and the match counter comes back over the message bridge.
     @objc private func handleFind() {
         guard webView.window?.isKeyWindow == true else { return }
         showFindBar = true
@@ -235,6 +376,38 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
         loadFromDisk(reason: "manual")
     }
 
+    /// Write arbitrary text to the general pasteboard and confirm via the
+    /// in-page toast. Backs the code-block copy button and heading copy-link
+    /// (JS posts {kind: "copyText", text, note}).
+    func copyTextToPasteboard(_ text: String, note: String) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+        webView.evaluateJavaScript(
+            "window.markee && window.markee.toast && window.markee.toast(\(jsString(note)));",
+            completionHandler: nil
+        )
+    }
+
+    /// JSON-encode a Swift string into a JS string literal (quotes included).
+    private func jsString(_ s: String) -> String {
+        let data = (try? JSONSerialization.data(withJSONObject: [s])) ?? Data()
+        let arr = String(data: data, encoding: .utf8) ?? "[\"\"]"
+        return String(arr.dropFirst().dropLast())
+    }
+
+    /// Reveal the word-count pill, then fade it after a few idle seconds. Each
+    /// new render resets the timer so it stays visible during active editing.
+    private func showStatsPillBriefly() {
+        statsHideWork?.cancel()
+        statsPillVisible = true
+        let work = DispatchWorkItem { [weak self] in
+            self?.statsPillVisible = false
+        }
+        statsHideWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4, execute: work)
+    }
+
     /// ⌘⇧C — copy the file's raw Markdown to the clipboard. Reads fresh from
     /// disk via the renderer's read path so the clipboard never holds a stale
     /// snapshot. Public so MarkeeWebView's context menu can call it directly.
@@ -246,9 +419,50 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
             self.errorBanner = "Couldn't read \(fileURL.lastPathComponent): \(error.localizedDescription)"
             return
         }
+        setPasteboardString(source)
+    }
+
+    /// Shared pasteboard writer for the copy actions.
+    private func setPasteboardString(_ s: String) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.setString(source, forType: .string)
+        pasteboard.setString(s, forType: .string)
+    }
+
+    /// ⌥⌘C — copy the file's Markdown with soft-wrapped paragraphs unwrapped
+    /// (syntax preserved). Reads fresh from disk, reflows in JS. Public so
+    /// MarkeeWebView's context menu can call it directly.
+    func copyReflowedMarkdown() {
+        let source: String
+        do {
+            source = try readFileWithFallback(at: fileURL)
+        } catch {
+            self.errorBanner = "Couldn't read \(fileURL.lastPathComponent): \(error.localizedDescription)"
+            return
+        }
+        let js = "window.markee && window.markee.reflow ? window.markee.reflow(\(jsString(source))) : null;"
+        webView.evaluateJavaScript(js) { [weak self] result, error in
+            guard let self else { return }
+            if let text = result as? String, error == nil {
+                self.setPasteboardString(text)
+            } else {
+                self.errorBanner = "Couldn't reflow Markdown."
+            }
+        }
+    }
+
+    /// ⌥⇧⌘C — copy the rendered content as flowing plain text (syntax stripped).
+    /// Reads the live DOM. Public so MarkeeWebView's context menu can call it.
+    func copyRenderedText() {
+        let js = "window.markee && window.markee.renderedText ? window.markee.renderedText() : null;"
+        webView.evaluateJavaScript(js) { [weak self] result, error in
+            guard let self else { return }
+            if let text = result as? String, error == nil {
+                self.setPasteboardString(text)
+            } else {
+                self.errorBanner = "Couldn't copy rendered text."
+            }
+        }
     }
 
     /// ⌘⇧R — reveal the current file in Finder. Public so MarkeeWebView's
@@ -260,6 +474,16 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
     @objc private func handleCopyMarkdownSource() {
         guard webView.window?.isKeyWindow == true else { return }
         copyMarkdownSource()
+    }
+
+    @objc private func handleCopyReflowedMarkdown() {
+        guard webView.window?.isKeyWindow == true else { return }
+        copyReflowedMarkdown()
+    }
+
+    @objc private func handleCopyRenderedText() {
+        guard webView.window?.isKeyWindow == true else { return }
+        copyRenderedText()
     }
 
     @objc private func handleRevealInFinder() {
@@ -283,26 +507,83 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
     func closeFind() {
         showFindBar = false
         findNotFound = false
+        findCurrent = 0
+        findTotal = 0
+        webView.evaluateJavaScript("window.markee && window.markee.clearFind && window.markee.clearFind();", completionHandler: nil)
     }
 
     private func runFind(backwards: Bool) {
-        guard !findQuery.isEmpty else { findNotFound = false; return }
-        let config = WKFindConfiguration()
-        config.backwards = backwards
-        config.wraps = true
-        config.caseSensitive = false
-        webView.find(findQuery, configuration: config) { [weak self] result in
-            self?.findNotFound = !result.matchFound
+        guard !findQuery.isEmpty else {
+            findNotFound = false; findCurrent = 0; findTotal = 0
+            webView.evaluateJavaScript("window.markee && window.markee.clearFind && window.markee.clearFind();", completionHandler: nil)
+            return
         }
+        let payload: [String: Any] = ["backwards": backwards]
+        guard let data = try? JSONSerialization.data(withJSONObject: payload),
+              let opts = String(data: data, encoding: .utf8) else { return }
+        let q = jsString(findQuery)
+        webView.evaluateJavaScript(
+            "window.markee && window.markee.find && window.markee.find(\(q), \(opts));",
+            completionHandler: nil
+        )
     }
 
     /// Open the system print panel for the rendered preview. The panel's PDF
     /// menu ("Save as PDF") gives print-to-PDF for free.
     @objc private func handlePrint() {
         guard webView.window?.isKeyWindow == true, let window = webView.window else { return }
-        let op = webView.printOperation(with: NSPrintInfo.shared)
+        let info = (NSPrintInfo.shared.copy() as? NSPrintInfo) ?? NSPrintInfo()
+        info.topMargin = Self.printMargin
+        info.bottomMargin = Self.printMargin
+        info.leftMargin = Self.printMargin
+        info.rightMargin = Self.printMargin
+        let op = webView.printOperation(with: info)
         op.view?.frame = webView.bounds
         op.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
+    }
+
+    @objc private func handleExportPDF() {
+        guard webView.window?.isKeyWindow == true, let window = webView.window else { return }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.pdf]
+        panel.nameFieldStringValue = fileURL.deletingPathExtension().lastPathComponent + ".pdf"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let op = webView.printOperation(with: Self.pdfPrintInfo(savingTo: url))
+        op.showsPrintPanel = false
+        op.showsProgressPanel = false
+        // Sheet-modal run (not op.run): WKWebView printing finalizes
+        // asynchronously, so the operation must spin the run loop — which the
+        // sheet variant does — or it writes a truncated PDF. It returns *before*
+        // the write completes, so success is reported in the didRun callback.
+        op.runModal(for: window, delegate: self,
+                    didRun: #selector(pdfExportDidRun(_:success:contextInfo:)),
+                    contextInfo: nil)
+    }
+
+    @objc private func pdfExportDidRun(_ op: NSPrintOperation, success: Bool,
+                                       contextInfo: UnsafeMutableRawPointer?) {
+        if !success { errorBanner = "PDF export failed." }
+    }
+
+    /// Shared print margin (0.75in). Margins are owned by the print system, not
+    /// CSS `@page`, so print and PDF stay consistent and un-doubled.
+    static let printMargin: CGFloat = 54   // 0.75in * 72pt
+
+    /// Build an NSPrintInfo that writes the print operation to a PDF file at
+    /// `url` instead of sending it to a printer.
+    static func pdfPrintInfo(savingTo url: URL) -> NSPrintInfo {
+        let info = NSPrintInfo()
+        info.jobDisposition = .save
+        info.dictionary()[NSPrintInfo.AttributeKey.jobSavingURL.rawValue] = url
+        info.horizontalPagination = .automatic
+        info.verticalPagination = .automatic
+        info.isHorizontallyCentered = false
+        info.isVerticallyCentered = false
+        info.topMargin = printMargin
+        info.bottomMargin = printMargin
+        info.leftMargin = printMargin
+        info.rightMargin = printMargin
+        return info
     }
 
     // MARK: - Zoom
@@ -345,6 +626,58 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
         webView.evaluateJavaScript(
             "window.markee && window.markee.setZoom(\(Self.storedZoom));",
             completionHandler: nil)
+    }
+
+    @objc private func handleSettingsDidChange() { applySettings() }
+
+    /// Push current settings into this window's WebView. Mirrors applyZoom():
+    /// a no-op until JS is ready, and re-run from the `ready` handler so a window
+    /// opened after a change still receives it.
+    private func applySettings() {
+        let payload = SettingsStore.shared.payload()
+        guard let data = try? JSONSerialization.data(withJSONObject: payload),
+              let json = String(data: data, encoding: .utf8) else { return }
+        webView.evaluateJavaScript(
+            "window.markee && window.markee.applySettings(\(json));",
+            completionHandler: nil)
+    }
+
+    /// Apply the pin state seeded in init (e.g. from MarkeeDefaultFloatOnTop) to
+    /// the NSWindow once it exists. Seeding `pinState` alone only drives the menu
+    /// checkmark; the window level is owned by `pinController`, which needs the
+    /// attached window. `configureWindow` calls this on first attach (and every
+    /// becomeKey), so it's guarded to run exactly once — and only after the window
+    /// is available, so an early nil-window call doesn't mark it done prematurely.
+    func applyInitialPinStateIfNeeded() {
+        guard !didApplyInitialPin, webView.window != nil else { return }
+        didApplyInitialPin = true
+        pinController.update(pinState)
+    }
+
+    // MARK: - Window pinning
+
+    @objc private func handleToggleFloatOnTop() {
+        guard webView.window?.isKeyWindow == true else { return }
+        pinState.toggleFloatOnTop()
+        pinController.update(pinState)
+    }
+
+    @objc private func handleToggleAllSpaces() {
+        guard webView.window?.isKeyWindow == true else { return }
+        pinState.toggleAllSpaces()
+        pinController.update(pinState)
+    }
+
+    @objc private func handleToggleFollowActive() {
+        guard webView.window?.isKeyWindow == true else { return }
+        pinState.toggleFollowActive()
+        pinController.update(pinState)
+    }
+
+    @objc private func handleToggleGhostMode() {
+        guard webView.window?.isKeyWindow == true else { return }
+        pinState.toggleGhostMode()
+        pinController.update(pinState)
     }
 
     /// Looks up the source line of the currently-active heading, if any.
@@ -416,6 +749,7 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
             // that arrived before this page's JS was ready was a silent no-op.
             // Re-reading the persisted level here covers both cases.
             applyZoom()
+            applySettings()
         case "outline":
             if let items = body["items"] as? [[String: Any]] {
                 self.outline = items.compactMap { d in
@@ -437,6 +771,28 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
             if id != self.currentHeadingID {
                 self.currentHeadingID = id
             }
+        case "copyText":
+            if let text = body["text"] as? String {
+                let note = body["note"] as? String ?? "Copied"
+                copyTextToPasteboard(text, note: note)
+            }
+        case "docStats":
+            let words = body["words"] as? Int ?? 0
+            let minutes = body["minutes"] as? Int ?? 1
+            self.docWords = words
+            self.docMinutes = minutes
+            showStatsPillBriefly()
+        case "findResult":
+            let current = body["current"] as? Int ?? 0
+            let total = body["total"] as? Int ?? 0
+            self.findCurrent = current
+            self.findTotal = total
+            self.findNotFound = (total == 0 && current == 0)
+        case "navigate":
+            guard let path = body["path"] as? String else { break }
+            let fragment = body["fragment"] as? String ?? ""
+            let newWindow = body["newWindow"] as? Bool ?? false
+            handleNavigate(path: path, fragment: fragment, newWindow: newWindow)
         default:
             break
         }
@@ -473,6 +829,7 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
             lines[line] = prefix + mark + suffix + (hadCR ? "\r" : "")
             let newText = lines.joined(separator: "\n")
             try newText.write(to: fileURL, atomically: true, encoding: .utf8)
+            if checked { UsageTracker.shared.recordBoxChecked() }
         } catch {
             self.errorBanner = "Failed to toggle task: \(error.localizedDescription)"
         }
@@ -483,6 +840,14 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard let url = navigationAction.request.url else {
             decisionHandler(.allow); return
+        }
+        // Belt-and-suspenders: JS intercepts .md link clicks (in-window nav).
+        // If one ever slips through, cancel it — never let the doc scheme load a
+        // .md into the main frame (that replaces the template with raw markdown).
+        if navigationAction.navigationType == .linkActivated,
+           url.scheme == DocSchemeHandler.scheme,
+           ["md", "markdown"].contains(url.pathExtension.lowercased()) {
+            decisionHandler(.cancel); return
         }
         // Allow initial load of our template & our scheme handlers
         if url.scheme == BundleSchemeHandler.scheme || url.scheme == DocSchemeHandler.scheme {
@@ -505,6 +870,68 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
             decisionHandler(.cancel); return
         }
         decisionHandler(.allow)
+    }
+
+    // MARK: - In-window navigation
+
+    private(set) var history: NavigationHistory!
+    private var pendingScrollTo: String = ""
+    private var pendingNavigated: Bool = false
+
+    /// Resolve a markee-doc path within the workspace root and either open a new
+    /// window or navigate the current one. Out-of-root paths are rejected.
+    private func handleNavigate(path: String, fragment: String, newWindow: Bool) {
+        guard let target = resolveSandboxed(root: workspace.root, requestPath: path) else {
+            errorBanner = "Link points outside the workspace folder."
+            return
+        }
+        guard FileManager.default.fileExists(atPath: target.path) else {
+            errorBanner = "File not found: \(target.lastPathComponent)"
+            return
+        }
+        if newWindow {
+            NSDocumentController.shared.openDocument(
+                withContentsOf: target, display: true, completionHandler: { _, _, _ in })
+            return
+        }
+        if history == nil { history = NavigationHistory(initial: fileURL) }
+        history.push(target)
+        navigate(to: target, fragment: fragment)
+    }
+
+    /// Retarget the window's document identity to `url` and re-render. Used by
+    /// link clicks (push) and the back/forward commands (no push).
+    private func navigate(to url: URL, fragment: String) {
+        self.fileURL = url
+        self.pendingScrollTo = fragment
+        self.pendingNavigated = true
+        // Keep AppKit's window proxy honest with the navigated document.
+        webView.window?.representedURL = url
+        startWatching()                       // cancels old watcher, watches new file
+        UsageTracker.shared.recordDocumentOpened(url)
+        loadFromDisk(reason: "navigate")
+        objectWillChange.send()               // refresh history-button enablement
+    }
+
+    var canGoBack: Bool { history?.canGoBack ?? false }
+    var canGoForward: Bool { history?.canGoForward ?? false }
+
+    func goBack() {
+        guard let url = history?.back() else { return }
+        navigate(to: url, fragment: "")
+    }
+    func goForward() {
+        guard let url = history?.forward() else { return }
+        navigate(to: url, fragment: "")
+    }
+
+    @objc private func handleGoBack() {
+        guard webView.window?.isKeyWindow == true else { return }
+        goBack()
+    }
+    @objc private func handleGoForward() {
+        guard webView.window?.isKeyWindow == true else { return }
+        goForward()
     }
 
     /// Scroll the WebView to a given heading id.

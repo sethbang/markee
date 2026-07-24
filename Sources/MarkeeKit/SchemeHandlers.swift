@@ -78,8 +78,12 @@ public final class BundleSchemeHandler: NSObject, WKURLSchemeHandler {
     }
 }
 
-/// Serves files from a specific document directory. One instance per WebView.
-/// URLs look like: markee-doc://doc/image.png  → /path/to/doc-dir/image.png
+/// Serves files from its configured `docRoot` (mutable via `setDocRoot`). In the
+/// app this is the WORKSPACE ROOT, so every `.md` sibling / image under the
+/// workspace resolves; per-document relative resolution is handled by each file's
+/// `<base href>` (docBase), not by this root. In the Quick Look extensions there
+/// is no workspace, so `docRoot` is the previewed file's own directory.
+/// URLs look like: markee-doc://doc/image.png  → <docRoot>/image.png
 public final class DocSchemeHandler: NSObject, WKURLSchemeHandler {
     public static let scheme = "markee-doc"
     public private(set) var docRoot: URL
@@ -138,9 +142,10 @@ public final class DocSchemeHandler: NSObject, WKURLSchemeHandler {
 }
 
 /// Resolve a request path against `root` and confirm the result stays inside.
-/// Returns nil on any escape — `..`, percent-encoded `%2e%2e`, absolute paths,
-/// symlinks pointing out, or boundary-attack siblings (`/notes_sibling`
-/// against root `/notes`).
+/// Returns nil on any escape — `..`, percent-encoded `%2e%2e`, symlinks pointing
+/// out, or boundary-attack siblings (`/notes_sibling` against root `/notes`).
+/// Leading slashes are stripped, so a leading-slash path is treated as relative
+/// to root (it does not escape; a non-existent target simply 404s downstream).
 ///
 /// Path is URL-decoded once, then appended to root, then symlink-resolved on
 /// both sides. The boundary check uses a trailing slash so the sibling-dir

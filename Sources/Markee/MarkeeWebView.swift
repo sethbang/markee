@@ -21,6 +21,20 @@ final class MarkeeWebView: WKWebView {
         copyItem.target = self
         menu.addItem(copyItem)
 
+        let reflowItem = NSMenuItem(
+            title: "Copy Reflowed Markdown",
+            action: #selector(copyReflowedMarkdownAction),
+            keyEquivalent: "")
+        reflowItem.target = self
+        menu.addItem(reflowItem)
+
+        let renderedItem = NSMenuItem(
+            title: "Copy as Rendered Text",
+            action: #selector(copyRenderedTextAction),
+            keyEquivalent: "")
+        renderedItem.target = self
+        menu.addItem(renderedItem)
+
         let revealItem = NSMenuItem(
             title: "Reveal in Finder",
             action: #selector(revealInFinderAction),
@@ -31,6 +45,14 @@ final class MarkeeWebView: WKWebView {
 
     @objc private func copyMarkdownSourceAction() {
         controller?.copyMarkdownSource()
+    }
+
+    @objc private func copyReflowedMarkdownAction() {
+        controller?.copyReflowedMarkdown()
+    }
+
+    @objc private func copyRenderedTextAction() {
+        controller?.copyRenderedText()
     }
 
     @objc private func revealInFinderAction() {

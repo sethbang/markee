@@ -22,6 +22,9 @@ jobs:
       - name: Install SwiftLint
         run: brew install swiftlint
 
+      - name: Install just
+        run: brew install just
+
       - name: Lint
         run: swiftlint lint --strict Sources Tests
 
@@ -32,10 +35,10 @@ jobs:
           key: vendor-${{ runner.os }}-${{ hashFiles('scripts/fetch-vendor.sh') }}
 
       - name: Fetch vendor (no-op if cached)
-        run: make fetch-vendor
+        run: just fetch-vendor
 
       - name: Test
-        run: make test
+        run: just test
 
       - name: Import Developer ID certificate
         env:
@@ -71,7 +74,7 @@ jobs:
           echo "MARKEE_KEYCHAIN=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
 
       - name: Build app bundle (Developer ID signed)
-        run: make app
+        run: just app
 
       - name: Verify bundle layout
         run: |

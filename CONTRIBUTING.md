@@ -7,12 +7,12 @@ so we can talk through the approach before you spend time on it.
 ## Build + test
 
 ```sh
-make fetch-vendor   # one-time
-make app            # builds Markee.app at the repo root
-make test           # Swift + JS tests
+just fetch-vendor   # one-time
+just app            # builds Markee.app at the repo root
+just test           # Swift + JS tests
 ```
 
-`make clean` resets everything (including the vendored JS libraries).
+`just clean` resets everything (including the vendored JS libraries). Run `just` to list every recipe.
 
 ## Code style
 
@@ -28,15 +28,24 @@ make test           # Swift + JS tests
 
 ## Before opening a PR
 
-- `make test` is green (Swift + JS).
-- `make app` builds cleanly.
+- `just test` is green (Swift + JS).
+- `just app` builds cleanly.
+- SwiftLint passes: `swiftlint lint --strict Sources Tests` — CI runs this as a
+  blocking gate (`--strict` makes warnings errors); install with
+  `brew install swiftlint`.
 - For UI changes, include a screenshot or short video.
 - For invariant-adjacent changes, mention which invariant you touched and why
   it's still safe.
 
 ## Releases (maintainer notes)
 
-- Bump `CFBundleShortVersionString` in `Resources/Info.plist`.
-- Update `CHANGELOG.md`.
-- Tag the commit (`git tag v0.X.Y`).
-- Create a GitHub Release with the `.app` bundled as a zipped artifact.
+- Bump `CFBundleShortVersionString` in `Resources/Info.plist` (and the two
+  Quick Look extension plists).
+- Update `CHANGELOG.md` — promote `[Unreleased]` to a `## [X.Y.Z] — <date>`
+  section. The release workflow extracts the matching section as the release
+  notes by an exact `## [VERSION]` match.
+- Tag the commit and push the tag (`git tag vX.Y.Z && git push origin vX.Y.Z`).
+  Pushing a `v*` tag triggers `.github/workflows/release.yml`, which lints,
+  tests, Developer-ID-signs, notarizes, staples, zips, and publishes the GitHub
+  Release automatically. The tag must equal `CFBundleShortVersionString` in
+  `Resources/Info.plist` or the workflow fails. Don't build or publish by hand.

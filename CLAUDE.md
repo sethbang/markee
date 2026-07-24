@@ -10,15 +10,19 @@ distributed outside the App Store as a Developer-ID-signed, notarized `.app`.
 ## Run
 
 ```sh
-make fetch-vendor   # one-time: downloads JS/CSS into Resources/web/vendor/ (gitignored)
-make app            # builds Markee.app at the repo root
-make run            # builds + opens
-make test           # swift test + node --test Tests/util.test.js
-make install        # builds and installs Markee.app to /Applications
-make notarize       # builds, signs, notarizes, and staples (see "Signing & notarization")
+just fetch-vendor   # one-time: downloads JS/CSS into Resources/web/vendor/ (gitignored)
+just app            # builds Markee.app at the repo root
+just run            # builds + opens
+just reset          # wipe ALL local state + relaunch a fresh, un-licensed install
+just reset-nudges   # like reset, but force the supporter nudges on immediately (no grace period)
+just reset-sandbox  # like reset-nudges, but point at the Polar sandbox (sources .env.local) for licensing tests
+just clean-install  # full from-scratch: remove + rebuild + reinstall + wipe + relaunch
+just test           # swift test + node --test (util.test.js, render.test.js, wikilink.test.js)
+just install        # builds and installs Markee.app to /Applications
+just notarize       # builds, signs, notarizes, and staples (see "Signing & notarization")
 ```
 
-`swift build` alone produces just the executables in `.build/`; `make app`
+`swift build` alone produces just the executables in `.build/`; `just app`
 assembles the usable `.app` bundle — Info.plist, icons, `Resources/`, and the
 two Quick Look extensions under `Contents/PlugIns/`.
 
@@ -27,7 +31,9 @@ two Quick Look extensions under `Contents/PlugIns/`.
 - `Sources/MarkeeKit/` — shared library used by the app and both extensions
   - `WebRenderer.swift` — headless WKWebView Markdown renderer
   - `SchemeHandlers.swift` — `markee-app://` (bundle resources) and
-    `markee-doc://` (the document's directory, path-traversal sandboxed)
+    `markee-doc://` (rooted at the workspace root; each document keeps its own
+    `<base href>` so relative links still resolve — path traversal above the
+    root blocked by `resolveSandboxed`)
   - `FileReader.swift` — encoding-tolerant file reader
   - `Timeout.swift`, `ThumbnailLayout.swift` — async-timeout and thumbnail
     page-fit helpers
@@ -36,21 +42,65 @@ two Quick Look extensions under `Contents/PlugIns/`.
   - `MarkdownDocument.swift` — read-only `FileDocument` (no content stored;
     `PreviewView` reloads from disk)
   - `PreviewController.swift` — per-window controller owning the WKWebView +
-    FileWatcher; routes JS messages, handles export-HTML and task-toggle
-    write-back
-  - `PreviewView.swift` — SwiftUI view: HSplitView (outline + WebView)
+    FileWatcher; routes JS messages, drives in-window navigation (back/forward)
+    and the workspace search palette, and handles export-HTML/PDF, print, zoom,
+    settings push, window pinning, open-in-editor, and task-toggle write-back
+  - `PreviewView.swift` — SwiftUI view: titlebar + sidebar (outline/files) +
+    WebView, plus the workspace search palette overlay
+  - `WorkspaceModel.swift` / `NavigationHistory.swift` / `WorkspaceSearch.swift`
+    — Phase 5 docs-navigation units: the workspace root + `.md` index + file
+    tree (`ObservableObject`), the pure back/forward stack, and full-text
+    search with a pure ranking function. `PreviewController` wires them together.
   - `FileWatcher.swift` — kqueue-backed (DispatchSource) with atomic-save
     reattach logic
+  - `SupportNudgeState.swift` / `SupportController.swift` / `SupportViews.swift`
+    / `LicenseActivation.swift` — optional Polar.sh supporter license: pure
+    nudge-cadence logic, the `UserDefaults`-backed controller + key redemption,
+    the SwiftUI surfaces (titlebar ♥ → `SupportDrawer` popover, menu, About
+    credits), and the pure Polar wire format. Nothing is feature-gated; paying
+    only silences the throttled nudges (a monthly support doc) and removes the
+    heart. Activation hits Polar's public (unauthenticated) customer-portal
+    endpoint, so no API key ships in the app. `SupportConfig` reads
+    `MARKEE_POLAR_BASE_URL`/`MARKEE_POLAR_ORG_ID` from the environment to point
+    a local build at the Polar sandbox for testing.
+  - `UsageStats.swift` / `UsageTracker.swift` — local-only usage counters
+    (documents previewed, re-renders watched, active days, boxes checked) shown
+    in the support drawer. File paths are stored only as salted SHA-256 hashes;
+    nothing here is ever transmitted.
+  - `SettingsStore.swift` / `SettingsView.swift` — Preferences window (Settings
+    scene, ⌘,): the `UserDefaults`-backed source of truth (theme override,
+    accent, base font, custom-CSS path, update-check, default-float, editor),
+    broadcasting `.settingsDidChange`; and the General/Appearance `TabView`.
+  - `WindowPinState.swift` / `WindowPinController.swift` /
+    `WindowPinCommands.swift` — window pinning: the pure state→AppKit mappings
+    (float-on-top, all-spaces/follow-active, ghost-mode dimming), the
+    controller applying them with hover/key tracking, and the Window-menu pin
+    commands (Float on Top ⌥⌘P, Visible on All Spaces, Move to Active Space,
+    Ghost Mode).
+  - `MarkeeTitlebar.swift` / `WindowAccessor.swift` — the custom titlebar view
+    (centered filename, sidebar toggle, back/forward chevrons, support heart,
+    word-count pill) and the `NSWindow` accessor that flips the titlebar flags.
+  - `MarkeeWebView.swift` — `WKWebView` subclass extending the native
+    right-click menu (Copy Markdown Source, Reveal in Finder).
+  - `Updater.swift` — in-app updater (checks GitHub Releases, downloads,
+    validates, swaps in place, relaunches); `EditorLauncher.swift` —
+    open-in-editor binary resolution + per-editor line-jump argv.
+  (This list is a curated overview, not an exhaustive file index.)
 - `Sources/MarkeeQuickLookPreview/` — Quick Look preview extension
   (`QLPreviewingController`) → `QuickLookPreview.appex`
 - `Sources/MarkeeQuickLookThumbnail/` — Quick Look thumbnail extension
   (`QLThumbnailProvider`) → `QuickLookThumbnail.appex`
 - `Resources/web/` — HTML/JS/CSS shipped into every bundle
-  - `template.html` — loads vendor scripts, then `util.js`, then `app.js`
+  - `template.html` — loads vendor scripts, then `util.js`, `render-core.js`,
+    then `app.js`
   - `app.js` — IIFE wrapping `render`, `scrollToHeading`, `exportStandalone`,
-    the task-toggle click handler. Exposes `window.markee`.
+    `setZoom`, `applySettings`, `find`/`clearFind`, `toast`, plus the
+    task-toggle and in-window `.md`-link navigation handlers. Exposes
+    `window.markee`.
   - `util.js` — pure helpers (`collectTaskLineNumbers`, `slugify`), UMD so Node
     can require them for tests
+  - `render-core.js` — markdown-it pipeline construction (`createRenderer`,
+    `stripFrontMatter`, `escapeHtml`); UMD so Node snapshot tests can require it
   - `theme.css` — built-in light/dark theme
   - `vendor/` — fetched libs; **gitignored**
 - `Resources/Info.plist`, `Resources/QuickLookPreview-Info.plist`,
@@ -60,21 +110,24 @@ two Quick Look extensions under `Contents/PlugIns/`.
 - `Resources/AppIcon.svg`, `Resources/DocIcon.svg` — icon sources; the `.icns`
   files are built and gitignored
 - `Resources/cli/markee` — shell launcher (`open -b com.markee.preview`)
-- `scripts/` — `fetch-vendor.sh` (pinned jsdelivr downloads), `build-icon.sh`
-  (`sips` + `iconutil`), `sign-app.sh`, `notarize-app.sh`
+- `scripts/` — `fetch-vendor.sh` (pinned jsdelivr downloads, verified against
+  `vendor.sha256`), `build-icon.sh` (`sips` + `iconutil`), `sign-app.sh`,
+  `notarize-app.sh`
+- `scripts/vendor.sha256` — SHA-256 manifest of every vendored file;
+  `fetch-vendor.sh` fails on mismatch
 - `Tests/MarkeeTests/`, `Tests/MarkeeKitTests/` — Swift unit tests;
   `Tests/util.test.js` — Node `--test` runner over `util.js`
 - `.github/workflows/` — `ci.yml` (lint + build/test on push/PR) and
   `release.yml` (tag-triggered signed + notarized release)
-- `fixtures/sample.md` — exercises every feature
+- `fixtures/sample.md` — exercises most rendering features
 
 ## How the JS↔Swift bridge works
 
 - Swift loads `markee-app://app/template.html` into the WebView at window open.
 - After `app.js` finishes setup, it posts `{kind: "ready"}` via `webkit.messageHandlers.markee` → Swift flips `templateLoaded` and flushes any queued `render`.
-- Every file change: Swift reads the file, serializes `{source, fileName, docBase}` to JSON, calls `evaluateJavaScript("window.markee.render(<json>);")`.
+- Every file change: Swift reads the file, serializes `{source, fileName, docBase, wikiIndex, readOnly}` to JSON (plus `navigated` and `scrollTo` on cross-file navigation), calls `evaluateJavaScript("window.markee.render(<json>);")`.
 - JS replies with `{kind: "outline", items}` for the sidebar, `{kind: "error", message}` for renderer exceptions, `{kind: "taskToggle", line, checked}` for clicked checkboxes.
-- Relative URLs in markdown (e.g. `![](pic.png)`) resolve via `<base href="markee-doc://doc/">`, which Swift's `DocSchemeHandler` maps to the document directory (path traversal blocked).
+- Relative URLs in markdown (e.g. `![](pic.png)`) resolve via a `<base href>` that `app.js` injects per render from the payload's `docBase` (`markee-doc://doc/<docDir-relative-to-workspace-root>/`, from `WorkspaceModel.docBase`). Swift's `DocSchemeHandler` is rooted at the workspace root and serves any file beneath it, with path traversal above the root blocked by `resolveSandboxed`.
 
 ## Non-obvious invariants (don't break these)
 
@@ -82,11 +135,86 @@ two Quick Look extensions under `Contents/PlugIns/`.
 - **`collectTaskLineNumbers` runs on the original source**, front matter and all, because Swift writes back to the file by absolute line index. Don't pass it the post-front-matter-stripped string.
 - **Swift's `toggleTask` re-reads the file before writing** and bails if the target line no longer matches the `[ ]/[x]` regex. This is the only protection against clobbering concurrent edits in another editor. Keep it.
 - **Line endings are preserved** in `toggleTask` by splitting on `"\n"`, leaving trailing `\r` inside each line, and joining on `"\n"`. Don't "normalize" them.
+- **`Resources/Support Markee.md` must contain no task checkboxes.** It's opened from the read-only app bundle; a `- [ ]`/`- [x]` would invite a task-toggle write-back that fails against the signed bundle. Keep the support-nudge copy checkbox-free.
+- **Bumping a vendored library means regenerating the manifest in the same diff.** Change the URL/version in `scripts/fetch-vendor.sh`, run `just clean` (or `rm -rf Resources/web/vendor`) so the bumped file is actually re-downloaded rather than skipped (`fetch-vendor.sh` skips any existing non-empty output file), then `scripts/fetch-vendor.sh --write-manifest`, and commit the updated `scripts/vendor.sha256` alongside — otherwise the next fetch fails integrity verification.
 - **Mermaid uses the UMD bundle (`mermaid.min.js`), not the ESM split build.** The ESM entry imports a tree of separate chunk files that doesn't resolve cleanly under our custom URL scheme.
 - **Renaming the app means updating four things in lockstep**: bundle id (`com.markee.preview`), URL schemes (`markee-app`, `markee-doc`), JS global (`window.markee`), and the `webkit.messageHandlers` name (`markee`).
 - **The custom titlebar relies on `WindowAccessor` flipping `titlebarAppearsTransparent` / `titleVisibility` / `.fullSizeContentView` on the host `NSWindow`.** SwiftUI's `.toolbar` modifier reintroduces a toolbar area — don't add it back. The traffic-light gutter in `MarkeeTitlebar` is reserved by `leftGutter: 78` and mirrored on the right so the centered filename stays centered. Resizing the window narrowly enough may push the filename behind the toggle; this is acceptable.
 - **`pickActiveHeading` (util.js) and the IntersectionObserver (app.js) are paired.** The observer uses `rootMargin: "0px 0px -80% 0px"` to fire when a heading enters the top 20% of the viewport; the helper picks the last heading whose top is ≤ 20% of viewport height. If you change one, change the other to match.
 - **WKWebView does NOT render `::before` / `::after` pseudo-elements on `<input>`.** The custom task-list checkbox checkmark uses a `background-image: url("data:image/svg+xml;...")` instead. Do not try to switch back to `::after`.
+- **`markee-chrome` is the single contract for screen-only injected
+  affordances.** Copy buttons, language badges, and heading anchors all carry
+  it; `exportStandalone` strips it and `@media print` hides it. Anything
+  injected into `#content` that must not appear in Export/Print/PDF must carry
+  this class. DOM chrome is also gated on `!payload.readOnly` so it never
+  renders in the Quick Look preview/thumbnail extensions.
+- **The heading copy-link glyph is a CSS `::after`**, and `decorateHeadings`
+  runs after the outline loop — so the link glyph never contaminates heading
+  `textContent` or the outline.
+- **Find is JS-owned** (`window.markee.find` / `clearFind`) using the CSS
+  Custom Highlight API when available (Range-keyed — no DOM mutation, no
+  Export/Print leak), falling back to `window.find`. Swift only drives it and
+  reads `{kind:"findResult", current, total}` back. Do not reintroduce a
+  `<mark>`-mutation engine or call `webView.find` directly.
+- **The two `Highlight` objects are registered once and mutated in place**
+  (per-range `add`/`delete` in `applyFindHighlights`). Replacing them wholesale
+  under the same registry key makes WebKit repaint only the *incoming* ranges'
+  text nodes, so a node that matched the old query but not the new one keeps
+  its stale paint — typing "f" then "freeze" left stray "f"s highlighted in
+  every text node without a "freeze" in it (inline markup splits a paragraph
+  into many such nodes). Don't go back to `CSS.highlights.set(name, new
+  Highlight(...))` per keystroke.
+- **Currency dollars are masked before KaTeX's auto-render and restored
+  after** (`maskCurrencyDollarsIn` in `app.js`, rule in `util.js`). Auto-render
+  treats every `$` as an inline-math delimiter, so a paragraph with two amounts
+  ("~$127k … ~$350M") was typeset as one math run. A `$` followed by an ASCII
+  digit is money, not a delimiter; `$` next to another `$` is left alone so
+  `$$…$$` still pairs. The restore runs in a `finally` — don't drop it, or a
+  KaTeX throw leaves U+E000 sentinels in the DOM.
+- **Task items are wrapped in an implicit `<label>`**
+  (markdown-it-task-lists `label: true`), so *any* click inside the item
+  activates the checkbox. A capture-phase click guard cancels that activation
+  when the click ends a text selection (`shouldSuppressTaskToggle` in
+  `util.js`). Without it, drag-selecting checklist text toggles the box, writes
+  the file, re-renders, and collapses the selection — which also wipes find
+  highlights via `clearFind()`.
+- **The word-count pill is SwiftUI, not DOM** — keep doc stats out of `#content`
+  so they never reach Export/Print/Quick Look.
+- **`render-core.js` owns markdown-it construction** and is loaded before
+  `app.js`; it is also `require`d by `Tests/render.test.js`. Changing the
+  pipeline means regenerating the snapshot:
+  `UPDATE_SNAPSHOTS=1 node --test Tests/render.test.js`.
+- **The `markee-doc://` sandbox is rooted at the workspace root, not the
+  document's folder.** Each document keeps its own `<base href>`
+  (`WorkspaceModel.docBase`) so relative images/links resolve correctly while
+  `resolveSandboxed` still blocks escape above the root. Widening the root
+  enlarges the in-app serving boundary — the nav policy makes no outbound
+  request, and only `.md`/`.markdown` links retarget the window.
+- **Navigation re-renders in place; it never reloads `template.html`.** Swift
+  owns `NavigationHistory` (the authoritative back/forward stack behind the
+  titlebar chevrons + `⌘[`/`⌘]`). `navigate(to:)` retargets `fileURL`, restarts
+  the FileWatcher (fresh watcher, not a reattach), and re-renders.
+- **Wiki-links resolve against `state.env.wikiIndex` ({stem → markee-doc url}),
+  passed in the render payload.** With no index (Quick Look / `readOnly`) every
+  `[[link]]` degrades to a non-navigating broken span. The rule lives in
+  `render-core.js`. Its resolving (anchor) path is covered by the
+  assertion-based `Tests/wikilink.test.js`; `render.test.js` passes no
+  `wikiIndex`, so a resolving-path change leaves the snapshot green. The
+  broken-span fallback IS in the render snapshot, so if that markup changes,
+  regenerate it too (`UPDATE_SNAPSHOTS=1 node --test Tests/render.test.js`).
+- **License keys are redeemed through Polar's `/activate` endpoint, not
+  `/validate`.** The benefit caps activations at 3 devices, and Polar requires
+  an `activation_id` on validate whenever a limit is set — so the activate
+  response (which already carries `license_key.status`) is the single source of
+  truth at key entry. `SupportController.redeem(key:)` is the UI entry point;
+  `LicenseActivation` owns the wire format. There is no launch-time
+  re-validation, deliberately: it would enforce nothing and break offline use.
+- **Run Debug ▸ Deactivate This Mac BEFORE `just reset`.** `_wipe` deletes the
+  whole defaults domain including `support.activationId`, which strands that
+  activation on Polar's side and burns one of three slots until it's cleared in
+  the customer portal.
+- **No `polar_oat_` token may enter the app bundle.** The customer-portal
+  endpoints are unauthenticated by design; only the organization UUID ships.
 
 ## Conventions
 
@@ -107,14 +235,14 @@ by Apple and the ticket stapled. The app itself is **not** sandboxed — it watc
   identity in the keychain it signs Developer ID + Hardened Runtime; with none
   it falls back to ad-hoc (so CI build-test and contributors still build).
 - `scripts/notarize-app.sh` zips, submits to `notarytool`, and staples.
-- `make app` signs; `make notarize` builds + signs + notarizes + staples.
+- `just app` signs; `just notarize` builds + signs + notarizes + staples.
 
 **Local setup (one-time):**
 - Install the "Developer ID Application" certificate in your login keychain
   (Xcode → Settings → Accounts → Manage Certificates, or the developer portal).
 - Store the App Store Connect API key as a notarytool keychain profile:
   `xcrun notarytool store-credentials markee-notary --key <AuthKey.p8> --key-id <KEY_ID> --issuer <ISSUER_ID>`
-- Then `NOTARY_KEYCHAIN_PROFILE=markee-notary make notarize` produces a
+- Then `NOTARY_KEYCHAIN_PROFILE=markee-notary just notarize` produces a
   notarized, stapled bundle.
 
 **CI:** `release.yml` (tag-triggered) imports the cert and notarizes
@@ -126,8 +254,6 @@ ad-hoc — signing secrets must never reach PR builds.
 ## Not yet built
 
 - DMG installer / Homebrew cask
-- In-app theme picker / custom CSS
-- A print-tuned stylesheet (printing currently reuses the screen CSS)
 - True MultiMarkdown citation / cross-reference support (GFM-ish via plugins today)
 
 ## Useful one-liners

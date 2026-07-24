@@ -15,8 +15,8 @@ struct MarkdownDocument: FileDocument {
     init() {}
 
     init(configuration: ReadConfiguration) throws {
-        // We don't actually need the contents here — PreviewView re-reads from disk
-        // via its own FileWatcher. DocumentGroup still requires init(configuration:).
+        // We don't actually need the contents here — PreviewView's PreviewController
+        // re-reads from disk via its FileWatcher. DocumentGroup still requires init(configuration:).
     }
 
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {

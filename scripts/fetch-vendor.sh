@@ -7,6 +7,14 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VENDOR="$ROOT/Resources/web/vendor"
 
+# Integrity manifest (pinned SHA-256 of every vendored file). A normal run
+# verifies the fetched files against it and fails on mismatch; pass
+# `--write-manifest` to regenerate it after a deliberate version bump (do that
+# in the SAME diff as the URL change).
+MANIFEST="$ROOT/scripts/vendor.sha256"
+MODE="verify"
+if [ "${1:-}" = "--write-manifest" ]; then MODE="write"; fi
+
 mkdir -p "$VENDOR/markdown-it" "$VENDOR/highlight" "$VENDOR/katex/fonts" "$VENDOR/mermaid"
 
 fetch() {
@@ -88,5 +96,34 @@ fetch "https://cdn.jsdelivr.net/npm/mermaid@11.4.0/dist/mermaid.min.js" \
 # Remove any stale ESM artifacts from earlier fetches
 rm -f "$VENDOR/mermaid/mermaid.esm.min.mjs"
 
-echo "Done. Vendor tree:"
-find "$VENDOR" -type f -not -name ".DS_Store" | sed "s|$ROOT/||" | sort
+# ---- integrity ----------------------------------------------------------
+# Manifest paths are relative to the repo root so `shasum -c` resolves them.
+cd "$ROOT"
+# No spaces in vendored paths, so word-splitting `$FILES` is safe and intended.
+FILES="$(find Resources/web/vendor -type f -not -name ".DS_Store" -not -name ".fetched" | sort)"
+
+if [ "$MODE" = "write" ]; then
+    # shellcheck disable=SC2086
+    shasum -a 256 $FILES > "$MANIFEST"
+    echo "Wrote manifest: scripts/vendor.sha256 ($(grep -c . "$MANIFEST") files)."
+else
+    if [ ! -f "$MANIFEST" ]; then
+        echo "ERROR: $MANIFEST is missing — run: scripts/fetch-vendor.sh --write-manifest" >&2
+        exit 1
+    fi
+    disk_count="$(printf '%s\n' "$FILES" | grep -c .)"
+    manifest_count="$(grep -c . "$MANIFEST")"
+    if [ "$disk_count" -ne "$manifest_count" ]; then
+        echo "ERROR: $disk_count vendored files on disk vs $manifest_count in scripts/vendor.sha256." >&2
+        echo "A vendored file was added or removed without updating the manifest." >&2
+        echo "Re-run with --write-manifest in the same diff as the change." >&2
+        exit 1
+    fi
+    if ! shasum -a 256 -c "$MANIFEST" >/dev/null; then
+        echo "ERROR: a vendored file does not match scripts/vendor.sha256." >&2
+        echo "A download was corrupted or tampered, or a library version changed" >&2
+        echo "without updating the manifest (re-run with --write-manifest)." >&2
+        exit 1
+    fi
+    echo "Vendor integrity verified against scripts/vendor.sha256 ($manifest_count files)."
+fi

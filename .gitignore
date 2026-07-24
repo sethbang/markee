@@ -24,4 +24,15 @@ Resources/web/vendor/
 # Internal design specs / AI-collaboration notes — kept private
 docs/superpowers/
 
+# Secrets (Polar API keys, etc.) — never commit
+.env
+.env.*
+!.env.example
+
+# Playwright MCP scratch output
+.playwright-mcp/
+
+# Affinity Designer icon sources — kept local, never served from site/
+*.afdesign
+
 .DS_Store

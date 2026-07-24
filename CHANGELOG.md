@@ -4,6 +4,48 @@ All notable changes to Markee are documented here. Format roughly follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] — 2026-07-24
+
+### Added
+- **Docs navigation** — click `.md` links to navigate in-window with
+  back/forward history (⌘[ / ⌘]), a sidebar file tree, `[[wiki-links]]`
+  resolved across the workspace, and a workspace-wide full-text search palette
+  (⇧⌘O). *File ▸ Open Folder as Workspace…* sets the root explicitly.
+- **Preferences window (⌘,)** — override the theme (System/Light/Dark), accent
+  color, and base font size, and load a custom CSS file (Settings scene).
+- **Window pinning** — Window-menu commands: Float on Top (⌥⌘P), Visible on All
+  Spaces, Move to Active Space, and a Ghost Mode that dims the window until you
+  hover or hold a modifier.
+- **Rendering polish** — copy-code buttons and language badges on code blocks,
+  heading anchor links, and a live word-count pill.
+- **Export PDF… (⇧⌘E)** — write the rendered document straight to a PDF,
+  alongside the existing Export Standalone HTML.
+- **Optional Polar.sh supporter license** with a local-only usage-stats drawer.
+  Nothing is feature-gated; supporting only silences the throttled nudges. A key
+  is redeemed once through Polar's activation endpoint and covers up to 3 Macs;
+  free a slot any time from the Polar customer portal.
+- **Commercial / Team license materials** (`COMMERCIAL.md`,
+  `docs/commercial-agreement-template.md`).
+
+### Changed
+- **Print / Save as PDF** now uses a print-tuned `@media print` stylesheet
+  (forced light palette, page-break avoidance for code/tables/diagrams, printed
+  link URLs) for cleaner pagination.
+- **Find in preview** is reimplemented as a JS-owned engine using the CSS Custom
+  Highlight API — no DOM mutation, so highlights never leak into Export/Print.
+- `fetch-vendor.sh` now verifies every downloaded library against a pinned
+  SHA-256 manifest (`scripts/vendor.sha256`) and fails on mismatch.
+- Supporter copy now states the real $1.99 minimum and the 3-Mac allowance, and
+  no longer describes a dismissible banner that was never built.
+
+### Removed
+- The "Stay Visible in Full Screen" pinning option — unachievable for Markee's
+  activating DocumentGroup windows.
+
+### Fixed
+- Mermaid and KaTeX render failures now surface in the in-app error banner
+  instead of failing silently.
+
 ## [1.0.0] — 2026-05-19
 
 The first publicly distributable release — Developer ID signed and notarized,

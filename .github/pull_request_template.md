@@ -10,8 +10,8 @@
 
 ## How to verify
 
-- [ ] `make test` passes
-- [ ] `make app` builds cleanly
+- [ ] `just test` passes
+- [ ] `just app` builds cleanly
 - [ ] Manual smoke: <!-- what you opened, what you clicked -->
 
 ## Notes for the reviewer

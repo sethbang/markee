@@ -345,54 +345,89 @@ h3 { font-size: 1.15rem; line-height: 1.3; }
   opacity: 0.55;
 }
 
-/* ---- Why Markee band ----------------------------------------------------- */
-.why {
-  padding: 72px 0;
-  background: var(--surface-2);
-  border-top: 1px solid var(--hairline);
-  border-bottom: 1px solid var(--hairline);
-}
-
-.why-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 36px;
-}
-@media (max-width: 880px) {
-  .why-grid { grid-template-columns: 1fr; gap: 28px; }
-}
-
-.why-card h2 {
-  font-size: 1.15rem;
-  line-height: 1.3;
-  margin: 14px 0 8px;
-  letter-spacing: -0.005em;
-}
-.why-card p {
-  color: var(--fg-muted);
-  font-size: 0.97rem;
-  line-height: 1.65;
-  margin: 0;
-}
-
-.why-glyph {
+/* ---- Shared icon (sits directly on the card, no chip) -------------------- */
+.card-glyph {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 38px; height: 38px;
-  border-radius: 10px;
-  background: var(--accent-soft);
+  width: 60px; height: 60px;
   color: var(--accent);
+}
+/* Designed icons carry a 0.5 hairline in-source; nudge to 0.7 at display size.
+   This CSS stroke-width overrides each path's presentation attribute without
+   editing the SVG sources. */
+.card-glyph svg * { stroke-width: 0.7; }
+
+/* Card layout: the heading sits full-width on top; below it the icon takes a
+   left column and the body a right column, so the body never wraps under the
+   icon. Explicit grid placement, so DOM order (glyph, h3, p) is irrelevant. */
+.pillar, .extra-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 16px;
+  align-items: start;
+}
+.pillar h3, .extra-card h3 {
+  grid-column: 1 / -1; grid-row: 1;
+  margin: 0 0 12px;
+  letter-spacing: -0.005em;
+}
+.pillar .card-glyph, .extra-card .card-glyph { grid-column: 1; grid-row: 2; }
+.pillar p, .extra-card p {
+  grid-column: 2; grid-row: 2;
+  color: var(--fg-muted);
+  line-height: 1.55;
+  margin: 0;
+}
+
+/* ---- Pillars (under the hero) -------------------------------------------- */
+.pillars { padding: 32px 0 80px; }
+
+.pillars-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 40px;
+}
+.pillar h3 { font-size: 1.2rem; }
+.pillar p { font-size: 1rem; }
+
+@media (max-width: 880px) {
+  .pillars-grid { grid-template-columns: 1fr; gap: 32px; }
+}
+
+/* ---- Everything-else grid (after the gallery) ---------------------------- */
+.extras { padding: 88px 0; }
+
+.extras-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+.extra-card {
+  padding: 26px 24px;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+}
+.extra-card h3 { font-size: 1.1rem; }
+.extra-card p { font-size: 0.95rem; }
+
+@media (max-width: 880px) {
+  .extras-grid { grid-template-columns: 1fr; gap: 20px; }
 }
 
 kbd {
   display: inline-block;
-  padding: 1px 6px;
+  padding: 0.14em 0.5em;
   font-family: ui-monospace, "SF Mono", monospace;
-  font-size: 0.82em;
+  font-size: 1.05em;
+  line-height: 1.2;
+  letter-spacing: 0.09em;
+  text-indent: 0.09em; /* offset the trailing letter-spacing so glyphs stay centred */
+  vertical-align: middle;
   background: var(--surface-3);
   border: 1px solid var(--hairline);
-  border-radius: 4px;
+  border-radius: 5px;
   color: var(--fg-strong);
 }
 

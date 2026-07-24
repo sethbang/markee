@@ -77,3 +77,8 @@ Markdown
 
 WKWebView
 :   Apple's modern WebView, used here for rendering.
+
+## Cross-document links
+
+A wiki link to [[sample]] and an unresolved one to [[Nonexistent Note]].
+A relative link to [another doc](./other.md).

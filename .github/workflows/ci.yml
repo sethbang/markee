@@ -38,6 +38,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Install just
+        run: brew install just
+
       - name: Cache vendored JS/CSS
         uses: actions/cache@v5
         with:
@@ -45,7 +48,7 @@ jobs:
           key: vendor-${{ runner.os }}-${{ hashFiles('scripts/fetch-vendor.sh') }}
 
       - name: Fetch vendor (no-op if cached)
-        run: make fetch-vendor
+        run: just fetch-vendor
 
       - name: Show toolchain
         run: |
@@ -54,10 +57,10 @@ jobs:
           node --version
 
       - name: Test
-        run: make test
+        run: just test
 
       - name: Build app bundle
-        run: make app
+        run: just app
 
       - name: Verify bundle layout
         run: |

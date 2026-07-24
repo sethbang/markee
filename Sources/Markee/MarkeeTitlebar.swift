@@ -5,6 +5,19 @@ struct MarkeeTitlebar: View {
     let fileName: String?
     let isOutlineVisible: Bool
     let onToggleOutline: () -> Void
+    var canGoBack: Bool = false
+    var canGoForward: Bool = false
+    var onBack: () -> Void = {}
+    var onForward: () -> Void = {}
+    var showSupport: Bool = false
+    var drawer: AnyView? = nil
+
+    @State private var showStats = false
+    @State private var beat: CGFloat = 1.0
+    // Timer publisher + onReceive ties the heartbeat to the view's lifetime
+    // (auto-cancels on disappear); a hand-rolled Timer in onAppear would leak
+    // past the window closing and need manual invalidation.
+    private let heartbeat = Timer.publish(every: 40, on: .main, in: .common).autoconnect()
 
     // Reserved gutter widths around the traffic-light cluster so the centered
     // filename stays visually centered in the window.
@@ -39,8 +52,50 @@ struct MarkeeTitlebar: View {
                     .accessibilityLabel(isOutlineVisible ? "Hide outline" : "Show outline")
                     .padding(.leading, 6)
                 }
+                if fileName != nil {
+                    Button(action: onBack) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 13, weight: .regular))
+                            .foregroundStyle(canGoBack ? toggleIconColor : toggleIconColor.opacity(0.35))
+                            .frame(width: 22, height: 24)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain).disabled(!canGoBack).help("Back")
+                    Button(action: onForward) {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 13, weight: .regular))
+                            .foregroundStyle(canGoForward ? toggleIconColor : toggleIconColor.opacity(0.35))
+                            .frame(width: 22, height: 24)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain).disabled(!canGoForward).help("Forward")
+                }
                 Spacer()
-                Color.clear.frame(width: rightGutter)
+                // Support affordance lives inside the reserved right gutter so
+                // the centered filename stays centered.
+                ZStack(alignment: .trailing) {
+                    Color.clear.frame(width: rightGutter)
+                    if showSupport, let drawer {
+                        Button {
+                            showStats.toggle()
+                        } label: {
+                            Image(systemName: "heart")
+                                .font(.system(size: 13, weight: .regular))
+                                .foregroundStyle(toggleIconColor)
+                                .scaleEffect(beat)
+                                .frame(width: 24, height: 24)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help("Support Markee")
+                        .accessibilityLabel("Support Markee")
+                        .padding(.trailing, 10)
+                        .popover(isPresented: $showStats, arrowEdge: .bottom) { drawer }
+                        .onReceive(heartbeat) { _ in
+                            if !showStats { pulse() }
+                        }
+                    }
+                }
             }
         }
         .frame(height: 44)
@@ -49,6 +104,21 @@ struct MarkeeTitlebar: View {
             Rectangle()
                 .fill(Color.primary.opacity(0.06))
                 .frame(height: 1)
+        }
+    }
+
+    // A subtle, occasional double-beat (lub-dub) so the heart catches the eye
+    // without nagging. Paused while the popover is open.
+    private func pulse() {
+        withAnimation(.easeOut(duration: 0.16)) { beat = 1.16 }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+            withAnimation(.easeIn(duration: 0.16)) { beat = 1.0 }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+                withAnimation(.easeOut(duration: 0.14)) { beat = 1.10 }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
+                    withAnimation(.easeIn(duration: 0.16)) { beat = 1.0 }
+                }
+            }
         }
     }
 

@@ -1,3 +1,9 @@
+# Supporter checkout. The app's Support button and the bundled support doc both
+# point at /support, so this rule is load-bearing for the whole paid path.
+/support   https://buy.polar.sh/polar_cl_v9SHG98qWgV4XbtIjDZ9SVESE34WPHiLYxXMi4Wf3Zc  302
 /releases  https://github.com/sethbang/markee/releases  302
 /repo      https://github.com/sethbang/markee           302
 /docs      https://github.com/sethbang/markee#readme    302
+# Commercial / Team licensing. Points at the COMMERCIAL.md overview until the
+# self-serve Polar Team checkout exists; repoint to the checkout at go-live.
+/teams     https://github.com/sethbang/markee/blob/main/COMMERCIAL.md  302

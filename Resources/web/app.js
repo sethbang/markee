@@ -1,6 +1,7 @@
 // Markee renderer — runs inside WKWebView.
-// Receives source from Swift via window.markee.render({source, fileName, docBase}).
-// Posts outline + errors back via webkit.messageHandlers.markee.
+// Receives render({source, fileName, docBase, readOnly, wikiIndex, navigated, scrollTo})
+// from Swift. Posts back (kind) ready/outline/error/findResult/scrollSection/
+// docStats/copyText/taskToggle/navigate via webkit.messageHandlers.markee.
 
 (function () {
     "use strict";
@@ -13,6 +14,10 @@
         } catch (_) { /* ignore */ }
     };
 
+    const errMsg = (e) => (e && e.message) ? e.message : String(e);
+
+    let isReadOnly = false;        // set per-render; gates navigation + chrome
+
     const showToast = (msg) => {
         const t = document.getElementById("toast");
         if (!t) return;
@@ -23,54 +28,23 @@
     };
 
     // ---- markdown-it setup -------------------------------------------------
+    // The pipeline itself lives in render-core.js (shared with Node tests).
+    const core = window.markeeRenderCore;
+    const escapeHtml = core.escapeHtml;
     let md = null;
     function buildRenderer() {
-        if (typeof markdownit === "undefined") {
-            return null;
-        }
-        const m = markdownit({
-            html: true,
-            linkify: true,
-            typographer: true,
-            breaks: false,
-            highlight: function (str, lang) {
-                if (lang === "mermaid") {
-                    return `<pre class="mermaid">${escapeHtml(str)}</pre>`;
-                }
-                if (lang && window.hljs && window.hljs.getLanguage(lang)) {
-                    try {
-                        return '<pre class="hljs"><code class="language-' + lang + '">' +
-                            window.hljs.highlight(str, { language: lang, ignoreIllegals: true }).value +
-                            "</code></pre>";
-                    } catch (_) { /* fall through */ }
-                }
-                if (window.hljs) {
-                    try {
-                        return '<pre class="hljs"><code>' + window.hljs.highlightAuto(str).value + "</code></pre>";
-                    } catch (_) { /* fall through */ }
-                }
-                return '<pre class="hljs"><code>' + escapeHtml(str) + "</code></pre>";
-            }
-        });
-        const plugin = (names, ...args) => {
-            for (const n of names) {
-                if (window[n]) { try { m.use(window[n], ...args); } catch (_) {} return; }
-            }
+        const pick = (...names) => {
+            for (const n of names) { if (window[n]) return window[n]; }
+            return undefined;
         };
-        plugin(["markdownitFootnote", "markdownItFootnote"]);
-        plugin(["markdownitDeflist", "markdownItDeflist"]);
-        plugin(["markdownItAttrs", "markdownitAttrs"]);
-        plugin(["markdownitTaskLists", "markdownItTaskLists"], { enabled: true, label: true });
-        return m;
-    }
-
-    function escapeHtml(s) {
-        return String(s)
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
-            .replace(/'/g, "&#39;");
+        return core.createRenderer({
+            markdownit: window.markdownit,
+            footnote: pick("markdownitFootnote", "markdownItFootnote"),
+            deflist: pick("markdownitDeflist", "markdownItDeflist"),
+            attrs: pick("markdownItAttrs", "markdownitAttrs"),
+            taskLists: pick("markdownitTaskLists", "markdownItTaskLists"),
+            hljs: window.hljs
+        });
     }
 
     // ---- active-heading scroll-spy -----------------------------------------
@@ -132,13 +106,121 @@
         post("taskToggle", { line, checked: !!cb.checked });
     }
 
+    // Post-render DOM pass for screen-only affordances (copy buttons, language
+    // badges, heading anchors). Every injected element carries `markee-chrome`
+    // so it is stripped from Export HTML and hidden in Print/PDF. Skipped in
+    // read-only contexts (Quick Look preview/thumbnail) where there is no
+    // pasteboard/menu to back the affordances.
+    function decorateContent(article, payload) {
+        if (!article || payload.readOnly) return;
+        decorateCodeBlocks(article);
+        decorateHeadings(article, payload.fileName);
+    }
+
+    // Add a language badge (when labeled) + hover copy button to each
+    // highlighted code block. Skips mermaid blocks (replaced by SVG).
+    function decorateCodeBlocks(article) {
+        const { codeLanguageFromClass } = window.markeeUtil;
+        article.querySelectorAll("pre.hljs").forEach((pre) => {
+            if (pre.querySelector(":scope > .markee-code-toolbar")) return;
+            const code = pre.querySelector("code");
+            const toolbar = document.createElement("div");
+            toolbar.className = "markee-chrome markee-code-toolbar";
+
+            const lang = code ? codeLanguageFromClass(code.className) : null;
+            if (lang) {
+                const badge = document.createElement("span");
+                badge.className = "markee-code-lang";
+                badge.textContent = lang;
+                toolbar.appendChild(badge);
+            }
+
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "markee-code-copy";
+            btn.textContent = "Copy";
+            btn.setAttribute("aria-label", "Copy code");
+            btn.addEventListener("click", () => {
+                const text = code ? code.textContent : "";
+                post("copyText", { text: text, note: "Code copied" });
+            });
+            toolbar.appendChild(btn);
+
+            pre.appendChild(toolbar);
+        });
+    }
+
+    // Add a hover "copy link to heading" affordance. The visible glyph is a CSS
+    // ::after on the button (never a text node), and this runs after outline
+    // building, so heading textContent / the outline stay clean.
+    function decorateHeadings(article, fileName) {
+        const { headingLinkMarkdown } = window.markeeUtil;
+        article.querySelectorAll("h1, h2, h3, h4, h5, h6").forEach((h) => {
+            if (!h.id) return;
+            if (h.querySelector(":scope > .markee-heading-anchor")) return;
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "markee-chrome markee-heading-anchor";
+            btn.setAttribute("aria-label", "Copy link to this heading");
+            btn.title = "Copy link to heading";
+            btn.addEventListener("click", () => {
+                const text = headingLinkMarkdown(h.textContent, fileName || "", h.id);
+                post("copyText", { text: text, note: "Heading link copied" });
+            });
+            h.appendChild(btn);
+        });
+    }
+
+    // ---- currency masking ---------------------------------------------------
+    // Swap money dollars for a private-use sentinel so KaTeX's auto-render
+    // can't pair them as inline-math delimiters, then put them back. The tag
+    // list mirrors auto-render's own default ignoredTags, so text KaTeX never
+    // looks at is never touched.
+    const CURRENCY_MASK = "";
+    const MATH_SKIP = "script, noscript, style, textarea, pre, code, option";
+
+    function eachMathTextNode(root, fn) {
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+            acceptNode(node) {
+                const p = node.parentElement;
+                if (!p || p.closest(MATH_SKIP)) return NodeFilter.FILTER_REJECT;
+                return NodeFilter.FILTER_ACCEPT;
+            }
+        });
+        let n;
+        while ((n = walker.nextNode())) fn(n);
+    }
+
+    function maskCurrencyDollarsIn(root) {
+        const { maskCurrencyDollars } = window.markeeUtil;
+        let touched = false;
+        eachMathTextNode(root, (n) => {
+            const masked = maskCurrencyDollars(n.nodeValue, CURRENCY_MASK);
+            if (masked !== n.nodeValue) { n.nodeValue = masked; touched = true; }
+        });
+        return function unmask() {
+            if (!touched) return;
+            eachMathTextNode(root, (n) => {
+                if (n.nodeValue.indexOf(CURRENCY_MASK) !== -1) {
+                    n.nodeValue = n.nodeValue.split(CURRENCY_MASK).join("$");
+                }
+            });
+        };
+    }
+
     // ---- render -------------------------------------------------------------
     function render(payload) {
         const article = document.getElementById("content");
         if (!article) return;
+        isReadOnly = !!payload.readOnly;
+        const isNav = !!payload.navigated;   // true on cross-file navigation
+        // Re-render invalidates find ranges; reset the Swift counter to the
+        // neutral "unknown" state (total -1) rather than a false "0 of 0".
+        clearFind();
+        post("findResult", { current: 0, total: -1 });
         if (!md) md = buildRenderer();
         if (!md) {
-            showToast("Renderer not loaded. Run 'make fetch-vendor' to install vendored libs.");
+            showToast("Renderer not loaded. Run 'just fetch-vendor' to install vendored libs.");
             article.innerHTML = `<pre style="white-space:pre-wrap">${escapeHtml(payload.source || "")}</pre>`;
             post("outline", { items: [] });
             return;
@@ -159,24 +241,16 @@
         // Per-render slug counter for heading-id de-duplication
         const slugCount = new Map();
 
-        // Strip YAML front matter (`---\n...\n---\n`) before rendering.
-        // Count the lines we strip so heading source-line numbers stay
-        // accurate against the on-disk file.
-        let src = String(payload.source || "");
-        src = src.replace(/^﻿/, "");
-        let frontMatterLines = 0;
-        const fmMatch = src.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n/);
-        if (fmMatch) {
-            frontMatterLines = (fmMatch[0].match(/\n/g) || []).length;
-            src = src.slice(fmMatch[0].length);
-        }
+        const fm = core.stripFrontMatter(payload.source || "");
+        const src = fm.body;
+        const frontMatterLines = fm.lineCount;
 
         // Parse → tokens (with line maps) → render, instead of md.render(),
         // so we can pull heading source-line numbers off the tokens.
         let tokens;
         let html;
         try {
-            const env = {};
+            const env = { wikiIndex: payload.wikiIndex || {} };
             tokens = md.parse(src, env);
             html = md.renderer.render(tokens, md.options, env);
         } catch (err) {
@@ -187,6 +261,15 @@
         }
 
         article.innerHTML = html;
+
+        // Document stats for the native word-count pill — computed here, before
+        // decorateContent injects chrome text ("Copy", language badges) and
+        // before KaTeX/Mermaid run, so the count reflects only document prose.
+        {
+            const { wordCount, readingMinutes } = window.markeeUtil;
+            const words = wordCount(article.textContent || "");
+            post("docStats", { words: words, minutes: readingMinutes(words) });
+        }
 
         // Walk tokens for heading source lines (matched positionally to DOM headings).
         const headingLines = [];
@@ -238,8 +321,15 @@
             }
         });
 
-        // KaTeX
+        // Screen-only affordances (copy/lang badges, heading anchors). After
+        // outline + task wiring so it can't perturb heading textContent.
+        decorateContent(article, payload);
+
+        // KaTeX. Currency dollars are masked out first so prose holding two
+        // amounts ("~$127k … ~$350M") isn't paired into one inline-math run;
+        // the mask is restored either way, including when KaTeX throws.
         if (window.renderMathInElement) {
+            const unmask = maskCurrencyDollarsIn(article);
             try {
                 window.renderMathInElement(article, {
                     delimiters: [
@@ -250,7 +340,11 @@
                     ],
                     throwOnError: false
                 });
-            } catch (e) { /* non-fatal */ }
+            } catch (e) {
+                post("error", { message: "Math rendering failed: " + errMsg(e) });
+            } finally {
+                unmask();
+            }
         }
 
         // Mermaid — the 2.5 MB bundle is loaded on demand only when the
@@ -260,15 +354,21 @@
             ensureMermaid(() => runMermaid(article));
         }
 
-        // Restore scroll
-        const newHeight = document.documentElement.scrollHeight;
-        const ratio = prevHeight > 0 ? prevScroll / prevHeight : 0;
-        const targetY = Math.min(prevScroll, Math.max(0, newHeight - window.innerHeight));
-        // If layout changed substantially, fall back to proportional scroll
-        if (Math.abs(newHeight - prevHeight) / Math.max(prevHeight, 1) > 0.5) {
-            window.scrollTo(0, ratio * newHeight);
+        // Restore scroll — but a navigation lands at the top of the new doc
+        // (then jumps to a fragment if the link had one). Same-file re-renders
+        // keep the reader's position.
+        if (isNav) {
+            window.scrollTo(0, 0);
+            if (payload.scrollTo) scrollToHeading(payload.scrollTo);
         } else {
-            window.scrollTo(0, targetY);
+            const newHeight = document.documentElement.scrollHeight;
+            const ratio = prevHeight > 0 ? prevScroll / prevHeight : 0;
+            const targetY = Math.min(prevScroll, Math.max(0, newHeight - window.innerHeight));
+            if (Math.abs(newHeight - prevHeight) / Math.max(prevHeight, 1) > 0.5) {
+                window.scrollTo(0, ratio * newHeight);
+            } else {
+                window.scrollTo(0, targetY);
+            }
         }
 
     }
@@ -304,6 +404,7 @@
         s.onerror = () => {
             mermaidState = "unloaded";
             mermaidWaiters = [];
+            post("error", { message: "Mermaid failed to load; diagrams are shown as code." });
         };
         document.head.appendChild(s);
     }
@@ -314,8 +415,123 @@
             article.querySelectorAll("pre.mermaid").forEach((el) => {
                 el.removeAttribute("data-processed");
             });
-            window.mermaid.run({ querySelector: "#content pre.mermaid" }).catch(() => {});
-        } catch (e) { /* non-fatal */ }
+            window.mermaid.run({ querySelector: "#content pre.mermaid" }).catch((e) => {
+                post("error", { message: "Diagram rendering failed: " + errMsg(e) });
+            });
+        } catch (e) {
+            post("error", { message: "Diagram rendering failed: " + errMsg(e) });
+        }
+    }
+
+    // ---- find ---------------------------------------------------------------
+    // JS-owned find. Primary path uses the CSS Custom Highlight API (Range-keyed,
+    // no DOM mutation, never leaks into Export/Print). When unavailable, falls
+    // back to window.find (current match only; total reported as -1 = unknown).
+    let findState = { query: "", ranges: [], current: -1 };
+
+    // The two Highlight objects are registered once and mutated in place.
+    // Swapping a fresh Highlight in under the same registry key makes WebKit
+    // repaint only the *incoming* ranges' text nodes, so a text node that
+    // matched the old query but not the new one keeps its stale paint — typing
+    // "f" then "freeze" left stray "f"s highlighted in every text node with no
+    // "freeze" in it (inline markup splits a paragraph into many such nodes).
+    // Removing each range from the registered Highlight invalidates it.
+    let hlAll = null, hlCurrent = null;
+
+    function highlightSupported() {
+        return !!(window.CSS && CSS.highlights && typeof window.Highlight === "function");
+    }
+
+    function ensureHighlights() {
+        if (!hlAll) { hlAll = new Highlight(); CSS.highlights.set("markee-find", hlAll); }
+        if (!hlCurrent) { hlCurrent = new Highlight(); CSS.highlights.set("markee-find-current", hlCurrent); }
+    }
+
+    // Per-range delete rather than clear(): each removal invalidates its own
+    // text node, which is exactly the repaint that was going missing.
+    function emptyHighlight(hl) {
+        if (!hl) return;
+        for (const r of Array.from(hl)) hl.delete(r);
+    }
+
+    function clearFind() {
+        findState = { query: "", ranges: [], current: -1 };
+        if (highlightSupported()) {
+            ensureHighlights();
+            emptyHighlight(hlAll);
+            emptyHighlight(hlCurrent);
+        }
+    }
+
+    function buildFindRanges(root, query) {
+        const { findMatchOffsets } = window.markeeUtil;
+        const ranges = [];
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+            acceptNode(node) {
+                if (!node.nodeValue) return NodeFilter.FILTER_REJECT;
+                const p = node.parentElement;
+                if (!p || p.closest(".markee-chrome, script, style")) return NodeFilter.FILTER_REJECT;
+                return NodeFilter.FILTER_ACCEPT;
+            }
+        });
+        let node;
+        while ((node = walker.nextNode())) {
+            const offsets = findMatchOffsets(node.nodeValue, query);
+            for (const off of offsets) {
+                const r = document.createRange();
+                r.setStart(node, off);
+                r.setEnd(node, off + query.length);
+                ranges.push(r);
+            }
+        }
+        return ranges;
+    }
+
+    function applyFindHighlights() {
+        if (!highlightSupported()) return;
+        ensureHighlights();
+        emptyHighlight(hlAll);
+        for (const r of findState.ranges) hlAll.add(r);
+        emptyHighlight(hlCurrent);
+        if (findState.current >= 0 && findState.ranges[findState.current]) {
+            hlCurrent.add(findState.ranges[findState.current]);
+        }
+    }
+
+    function scrollRangeIntoView(range) {
+        const rect = range.getBoundingClientRect();
+        if (rect.top < 0 || rect.bottom > window.innerHeight) {
+            window.scrollTo({ top: window.scrollY + rect.top - window.innerHeight * 0.3, behavior: "smooth" });
+        }
+    }
+
+    function find(query, opts) {
+        opts = opts || {};
+        const article = document.getElementById("content");
+        const q = String(query || "");
+        if (!article || !q) { clearFind(); post("findResult", { current: 0, total: 0 }); return; }
+
+        if (!highlightSupported()) {
+            const found = typeof window.find === "function"
+                ? window.find(q, false, !!opts.backwards, true, false, false, false)
+                : false;
+            post("findResult", { current: found ? 1 : 0, total: found ? -1 : 0 });
+            return;
+        }
+
+        if (q !== findState.query) {
+            findState.query = q;
+            findState.ranges = buildFindRanges(article, q);
+            findState.current = -1;
+        }
+        const total = findState.ranges.length;
+        if (total === 0) { applyFindHighlights(); post("findResult", { current: 0, total: 0 }); return; }
+        findState.current = opts.backwards
+            ? (findState.current - 1 + total) % total
+            : (findState.current + 1) % total;
+        applyFindHighlights();
+        scrollRangeIntoView(findState.ranges[findState.current]);
+        post("findResult", { current: findState.current + 1, total: total });
     }
 
     // ---- export standalone HTML --------------------------------------------
@@ -323,6 +539,9 @@
         const article = document.getElementById("content");
         if (!article) return "";
         const clone = article.cloneNode(true);
+        // Screen-only chrome (copy buttons, badges, heading anchors) never
+        // ships in canonical exports.
+        clone.querySelectorAll(".markee-chrome").forEach((e) => e.remove());
 
         // Inline images as data URIs
         const imgs = Array.from(clone.querySelectorAll("img"));
@@ -342,10 +561,13 @@
             } catch (_) { /* leave src as-is */ }
         }));
 
-        // Gather stylesheets
+        // Gather stylesheets. Skip the screen-scoped user-css block: exported
+        // HTML ships canonical (default look), like Print/PDF — the recipient
+        // shouldn't inherit the author's accent/font/custom-CSS.
         const sheets = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'));
         const cssParts = [];
         for (const s of sheets) {
+            if (s.id === "markee-user-css") continue;
             if (s.tagName === "STYLE") { cssParts.push(s.textContent); continue; }
             const href = s.getAttribute("href"); if (!href) continue;
             try {
@@ -371,6 +593,37 @@ ${cssParts.join("\n\n")}
         return head + clone.outerHTML + foot;
     }
 
+    // Flowing plain text of the rendered content: syntax stripped, paragraphs
+    // flow. Mirrors exportStandalone's clone-and-strip. innerText (not
+    // textContent) so block boundaries become newlines and soft wraps collapse.
+    function renderedText() {
+        const article = document.getElementById("content");
+        if (!article) return "";
+        const clone = article.cloneNode(true);
+        // Screen-only chrome + KaTeX's hidden MathML tree would pollute/duplicate
+        // the text; drop them (same markee-chrome contract exportStandalone uses).
+        clone.querySelectorAll(".markee-chrome, .katex-mathml").forEach((e) => e.remove());
+        // innerText needs a laid-out element; a detached clone degrades to
+        // textContent (no block breaks). Attach off-screen to force layout.
+        clone.style.position = "absolute";
+        clone.style.left = "-99999px";
+        clone.style.top = "0";
+        clone.setAttribute("aria-hidden", "true");
+        document.body.appendChild(clone);
+        let text = "";
+        try { text = clone.innerText || ""; } finally { clone.remove(); }
+        return text.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+    }
+
+    // Unwrapped Markdown (syntax kept). Delegates to reflow.js, reusing the
+    // renderer's md instance so it sees the same block grammar; lazily builds it
+    // in case reflow is invoked before the first render().
+    function reflowMarkdown(source) {
+        if (!md) md = buildRenderer();
+        if (!window.markeeReflow || !md) return String(source == null ? "" : source);
+        return window.markeeReflow.reflow(source, md);
+    }
+
     // ---- zoom ---------------------------------------------------------------
     // Swift drives zoom by calling window.markee.setZoom(factor). CSS `zoom`
     // on <html> reflows text and scales code blocks, images, KaTeX, and
@@ -381,17 +634,76 @@ ${cssParts.join("\n\n")}
             (Number.isFinite(f) && f > 0) ? String(f) : "1";
     }
 
+    // ---- settings / theming -------------------------------------------------
+    // Swift calls window.markee.applySettings(payload) on ready and on every
+    // settings change. Everything here is delivered through the screen-scoped
+    // <style id="markee-user-css"> block or the data-theme attribute, so none of
+    // it reaches the print stylesheet — PDFs/print stay canonical by construction.
+    function applySettings(s) {
+        s = s || {};
+        const root = document.documentElement;
+
+        // Theme override: system clears the attribute (OS governs); light/dark
+        // force it. The dark highlight.js sheet is OS-gated by default; retarget
+        // its media query so syntax colors follow the forced theme.
+        const theme = s.theme === "light" || s.theme === "dark" ? s.theme : "system";
+        if (theme === "system") {
+            root.removeAttribute("data-theme");
+        } else {
+            root.setAttribute("data-theme", theme);
+        }
+        const darkSheet = document.getElementById("hljs-dark");
+        if (darkSheet) {
+            // "screen" (not "all"): the .hljs dark background/foreground come from
+            // this sheet directly and outrank theme.css's pre/code rules, so an
+            // "all" media would leak the dark code background into Print/PDF/Export.
+            // Keep it screen-only so the print path stays canonical (light).
+            if (theme === "dark") darkSheet.media = "screen";
+            else if (theme === "light") darkSheet.media = "not all";
+            else darkSheet.media = "(prefers-color-scheme: dark)";
+        }
+
+        // Accent + base font as :root variable overrides, then the user's CSS,
+        // all inside the one screen-scoped block.
+        const styleEl = document.getElementById("markee-user-css");
+        if (styleEl) {
+            const vars = [];
+            const accent = typeof s.accent === "string" && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(s.accent)
+                ? s.accent : "";
+            // !important so a user override beats the theme token blocks, which
+            // are higher specificity (e.g. :root[data-theme="dark"] is (0,2,0))
+            // and set --accent themselves. Safe for print: this whole block is
+            // media="screen", so it's inert in PDF/Print regardless of !important.
+            if (accent) {
+                vars.push(`--accent:${accent} !important`);
+                vars.push(`--accent-bg-soft:color-mix(in srgb, ${accent} 7%, transparent) !important`);
+            }
+            const bf = Number(s.baseFont);
+            if (Number.isFinite(bf) && bf > 0) vars.push(`--base-font:${bf}px !important`);
+            const rootRule = vars.length ? `:root{${vars.join(";")}}` : "";
+            const userCSS = typeof s.userCSS === "string" ? s.userCSS : "";
+            styleEl.textContent = rootRule + (userCSS ? "\n" + userCSS : "");
+        }
+    }
+
     // ---- expose API ---------------------------------------------------------
     window.markee = {
         render,
         scrollToHeading,
         exportStandalone,
-        setZoom
+        reflow: reflowMarkdown,
+        renderedText,
+        setZoom,
+        applySettings,
+        toast: showToast,
+        find,
+        clearFind
     };
 
-    // Mermaid is loaded as a module; the inline initializer (or load failure)
-    // dispatches markee:mermaid-ready. Trigger an outline-only refresh if
-    // mermaid finishes after the first render.
+    // Mermaid loads as a classic UMD <script> on demand (ensureMermaid). Its
+    // onload dispatches markee:mermaid-ready; this listener initializes mermaid
+    // with the current OS color scheme. Actual diagram rendering is driven by
+    // the onload waiter callback queued in render(), not from here.
     window.addEventListener("markee:mermaid-ready", () => {
         if (window.mermaid && typeof window.mermaid.initialize === "function") {
             try {
@@ -405,6 +717,53 @@ ${cssParts.join("\n\n")}
 
     window.addEventListener("scroll", scrollHandler, { passive: true });
     window.addEventListener("resize", scrollHandler, { passive: true });
+
+    // Intercept clicks on markee-doc:// links ending in .md — navigate in-window
+    // (or open a new window on ⌘/ctrl/middle-click). Capture phase so it beats
+    // the default anchor handling. Other link schemes keep their existing path.
+    function interceptLinkClick(ev, forceNewWindow) {
+        if (isReadOnly) return;
+        const a = ev.target && ev.target.closest && ev.target.closest("a[href]");
+        if (!a) return;
+        let url;
+        try { url = new URL(a.href); } catch (_) { return; }
+        if (url.protocol !== "markee-doc:") return;
+        if (!/\.(md|markdown)$/i.test(url.pathname)) return;
+        ev.preventDefault();
+        post("navigate", {
+            path: url.pathname,
+            fragment: url.hash ? decodeURIComponent(url.hash.slice(1)) : "",
+            newWindow: forceNewWindow || ev.metaKey || ev.ctrlKey
+        });
+    }
+    document.addEventListener("click", (ev) => interceptLinkClick(ev, false), true);
+
+    // markdown-it-task-lists wraps each task item's text in a <label>, so a
+    // click anywhere in the item activates the checkbox. That made checklist
+    // text impossible to select: releasing a selection drag fired a click on
+    // the label, which flipped the box (writing to the file) and collapsed the
+    // selection. Cancel the label's activation for clicks that end a selection;
+    // a deliberate click still toggles. Capture phase, no stopPropagation, so
+    // the link interceptor above keeps seeing its clicks.
+    let taskPointerDown = { x: 0, y: 0 };
+    document.addEventListener("mousedown", (ev) => {
+        taskPointerDown = { x: ev.clientX, y: ev.clientY };
+    }, true);
+    document.addEventListener("click", (ev) => {
+        const t = ev.target;
+        if (!t || !t.closest || !t.closest("li.task-list-item")) return;
+        const sel = window.getSelection();
+        const suppress = window.markeeUtil.shouldSuppressTaskToggle({
+            onCheckbox: !!(t.matches && t.matches('input[type="checkbox"]')),
+            hasSelection: !!sel && !sel.isCollapsed,
+            dx: ev.clientX - taskPointerDown.x,
+            dy: ev.clientY - taskPointerDown.y
+        });
+        if (suppress) ev.preventDefault();
+    }, true);
+    document.addEventListener("auxclick", (ev) => {
+        if (ev.button === 1) interceptLinkClick(ev, true);   // middle-click
+    }, true);
 
     // Tell Swift we're ready to receive render() calls
     post("ready");

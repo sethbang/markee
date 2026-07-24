@@ -154,6 +154,10 @@ final class Updater {
 
     /// Once-a-day silent launch check. Throttled by a UserDefaults timestamp.
     func checkOnLaunch() {
+        // Respect the Preferences toggle (defaults to on when the key is unset).
+        if UserDefaults.standard.object(forKey: "MarkeeUpdateCheckEnabled") as? Bool == false {
+            return
+        }
         if let last = UserDefaults.standard.object(forKey: Self.lastCheckKey) as? Date,
            Date().timeIntervalSince(last) < 24 * 60 * 60 {
             return

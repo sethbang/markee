@@ -16,15 +16,15 @@ checked items ship in the next release.
 
 - [ ] DMG installer with a drag-to-Applications layout
 - [ ] Homebrew cask — `brew install --cask markee`
-- [ ] In-app theme picker with custom CSS support
+- [x] In-app theme picker with custom CSS support
 - [ ] Remember window size and position per document
-- [ ] A print stylesheet tuned for page breaks
+- [x] A print stylesheet tuned for page breaks
 
 ## Under consideration
 
 - [ ] Multi-file project sidebar
 - [ ] Presenter mode for slide-style Markdown
-- [ ] Direct PDF export without the print dialog
+- [x] Direct PDF export without the print dialog
 - [ ] Live word count and reading-time estimate
 - [ ] Configurable Markdown dialect per document
 

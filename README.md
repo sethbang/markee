@@ -48,7 +48,16 @@ in Editor**, and your editor opens at that line.
 - Outline sidebar with live active-heading highlight (⌘⌥\\ to toggle).
 - Export Standalone HTML with inlined CSS + images (⌘E).
 - ⌘F find in preview, ⌘P print or save as PDF.
-- Light + dark themes, follows `prefers-color-scheme`.
+- **In-window navigation** — click `.md` links to move between files with
+  Back/Forward (⌘[ / ⌘]), a sidebar file tree, `[[wiki-links]]`, and a
+  workspace-wide search palette (⇧⌘O).
+- **Window pinning** — float a window on top (⌥⌘P), keep it on all Spaces, or
+  use ghost mode to dim it until you hover.
+- Light + dark themes, following `prefers-color-scheme`, plus a **Preferences**
+  window (⌘,) to override the theme, accent color, base font size, and load a
+  custom CSS file.
+- **Optional supporter license** — Markee is free and fully featured; nothing is
+  gated. Supporting only quiets an occasional nudge.
 - CLI launcher: `markee path/to/notes.md`.
 
 ## Install
@@ -56,7 +65,7 @@ in Editor**, and your editor opens at that line.
 ### Recommended: prebuilt `.app`
 
 Download `Markee.app.zip` from the latest
-[GitHub Release](https://github.com/sethbangert/markee/releases), unzip, drag
+[GitHub Release](https://github.com/sethbang/markee/releases), unzip, drag
 into `/Applications`.
 
 Release builds are Developer ID signed and notarized, so they open normally
@@ -65,25 +74,35 @@ with a double-click — no Gatekeeper warning, no right-click workaround needed.
 ### From source
 
 ```sh
-make fetch-vendor   # one-time: pinned downloads of markdown-it, KaTeX, highlight.js, Mermaid
-make app            # builds Markee.app at the repo root
-make run            # builds + opens
-make install        # copies to /Applications
+just fetch-vendor   # one-time: pinned downloads of markdown-it, KaTeX, highlight.js, Mermaid
+just app            # builds Markee.app at the repo root
+just run            # builds + opens
+just install        # copies to /Applications
 ```
 
-Subsequent `make app` invocations skip the vendor fetch (sentinel-based).
+Subsequent `just app` invocations skip the vendor fetch (sentinel-based). Run `just` to list every recipe.
 
 ## Use
 
 Any of these opens a file:
 
-- Drag a `.md` onto the Markee dock icon.
+- Drag a Markdown file onto the Markee dock icon.
 - File ▸ Open… (⌘O).
+- File ▸ Open Folder as Workspace… to set a folder as the navigation root.
 - `open Markee.app yourfile.md`.
 - After installing the CLI (File ▸ Install Command Line Tool…):
   `markee yourfile.md`.
 
 Then edit the file in your editor. Save. The preview updates.
+
+### Workspaces
+
+Opening a single file quietly establishes a *workspace* around it — the root
+Markee uses to resolve the file tree, `[[wiki-links]]`, and ⇧⌘O search. The root
+is inferred from the file you open: the enclosing git repository if there is
+one, otherwise the nearest parent folder holding more than one Markdown file,
+otherwise the file's own folder. Use **File ▸ Open Folder as Workspace…** to set
+it explicitly.
 
 ## Keyboard shortcuts
 
@@ -91,11 +110,23 @@ Then edit the file in your editor. Save. The preview updates.
 |----------|--------|
 | ⌘O | Open file |
 | ⌘W | Close window |
+| ⌘, | Preferences |
 | ⌘⌥\\ | Toggle outline sidebar |
+| ⌘[ / ⌘] | Back / forward |
+| ⇧⌘O | Search workspace |
+| ⌘R | Reload from disk |
+| ⌘+ / ⌘= | Zoom in |
+| ⌘- | Zoom out |
+| ⌘0 | Actual size |
 | ⌘E | Export Standalone HTML |
+| ⇧⌘E | Export PDF |
 | ⌥⌘E | Open in Editor at current heading |
+| ⇧⌘C | Copy Markdown source |
+| ⇧⌘R | Reveal in Finder |
 | ⌘F | Find in preview |
+| ⌘G / ⇧⌘G | Find next / previous |
 | ⌘P | Print / save as PDF |
+| ⌥⌘P | Float window on top |
 
 ## Open-in-Editor configuration
 
@@ -120,21 +151,28 @@ supported editors is in `Sources/Markee/EditorLauncher.swift`.
 ## Develop
 
 ```sh
-make test         # swift test + node --test (Swift + JS)
-make test-swift   # FileWatcher, SchemeHandler, PreviewController, EditorLauncher
-make test-js      # util.js (collectTaskLineNumbers, slugify, pickActiveHeading)
-make clean        # nuke .build, Markee.app, and Resources/web/vendor
+just test         # swift test + node --test (Swift + JS)
+just test-swift   # Swift unit tests (XCTest)
+just test-js      # JS pure-helper + render-snapshot + wiki-link tests
+just clean        # nuke .build, Markee.app, and Resources/web/vendor
+just reset        # wipe local state + relaunch a fresh, un-licensed install
 ```
 
-48 tests passing at HEAD (24 Swift + 24 JS).
+168 tests passing at HEAD (131 Swift + 37 JS).
 
 ### Project layout
 
 ```
 Sources/Markee/        Swift app (SwiftUI DocumentGroup + WKWebView)
+  Workspace*.swift     Workspace root + file tree, search, and back/forward
+  NavigationHistory.swift  Pure back/forward stack
+Sources/MarkeeKit/     Shared library: renderer, scheme handlers, file reader
+Sources/MarkeeQuickLookPreview/    Quick Look preview extension (.appex)
+Sources/MarkeeQuickLookThumbnail/  Quick Look thumbnail extension (.appex)
 Resources/web/         HTML/JS/CSS shipped into the bundle
-  template.html        Loads vendor + util + app
+  template.html        Loads vendor + util + render-core + app
   app.js               Renderer glue, scroll preservation, message bridge
+  render-core.js       markdown-it pipeline (also used by Node snapshot tests)
   util.js              Pure helpers (importable by Node tests)
   theme.css            Light/dark theme
   vendor/              Fetched at build time, not committed
@@ -142,7 +180,7 @@ Resources/cli/markee   Shell launcher
 Resources/AppIcon.svg  Source for the app icon
 scripts/               build-icon.sh, fetch-vendor.sh, sign-app.sh, notarize-app.sh
 Tests/                 Swift + JS tests
-fixtures/sample.md     Exercises every feature
+fixtures/sample.md     Exercises most rendering features
 docs/demo.md           README hero document
 ```
 
@@ -181,6 +219,10 @@ For security reports, see [SECURITY.md](SECURITY.md).
 [MIT](LICENSE). Markee bundles a handful of third-party JS/CSS libraries
 under their own permissive licenses — see
 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) for the full texts.
+
+**Using Markee at work?** Markee is free for everyone, companies included. If
+your team wants priority support and a commercial support agreement on file, see
+[COMMERCIAL.md](COMMERCIAL.md).
 
 ## Credits
 

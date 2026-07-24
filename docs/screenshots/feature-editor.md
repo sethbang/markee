@@ -21,17 +21,17 @@ graying Markee out and the unsigned-app first-launch warning goes away.
 Background image with drag-to-Applications arrow, automated via
 `create-dmg`. Tag-triggered, attached to the GitHub Release.
 
-## Deferred
+## Shipped since
 
 ### Theme picker
 
-System-following + light + dark is enough for v0.3. A custom-theme picker
-adds an in-app preferences UI we don't otherwise need yet.
+Shipped — a Preferences window (⌘,) adds a System / Light / Dark override,
+accent color, base font size, and a custom-CSS file.
 
 ### Print stylesheet
 
-Currently `@media print` falls through to screen styles. Tolerable for
-most documents but breaks near page boundaries for KaTeX and Mermaid.
+Shipped — a print-tuned `@media print` stylesheet now drives Print (⌘P) and
+PDF export, with page-break handling for code, tables, KaTeX, and Mermaid.
 
 ## Process
 

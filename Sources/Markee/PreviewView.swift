@@ -44,6 +44,7 @@ struct PreviewView: View {
 
 private struct PreviewContent: View {
     @StateObject private var controller: PreviewController
+    @ObservedObject private var support = SupportController.shared
 
     init(fileURL: URL) {
         _controller = StateObject(wrappedValue: PreviewController(fileURL: fileURL))
@@ -58,7 +59,13 @@ private struct PreviewContent: View {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
                         controller.showOutline.toggle()
                     }
-                }
+                },
+                canGoBack: controller.canGoBack,
+                canGoForward: controller.canGoForward,
+                onBack: { controller.goBack() },
+                onForward: { controller.goForward() },
+                showSupport: support.showSupportButton,
+                drawer: AnyView(SupportDrawer(support: support, usage: UsageTracker.shared))
             )
             HStack(spacing: 0) {
                 OutlineSidebar(controller: controller)
@@ -81,6 +88,15 @@ private struct PreviewContent: View {
                         .transition(.move(edge: .top).combined(with: .opacity))
                     }
                 }
+                .overlay(alignment: .bottomTrailing) {
+                    if controller.statsPillVisible {
+                        WordCountPill(words: controller.docWords, minutes: controller.docMinutes)
+                            .padding(.trailing, 12)
+                            .padding(.bottom, 10)
+                            .transition(.opacity)
+                    }
+                }
+                .animation(.easeInOut(duration: 0.3), value: controller.statsPillVisible)
                 .frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
             }
         }
@@ -88,6 +104,12 @@ private struct PreviewContent: View {
         .background(WindowAccessor { window in
             configureWindow(window)
         })
+        .overlay {
+            if controller.showSearchPalette {
+                SearchPalette(controller: controller)
+            }
+        }
+        .focusedSceneValue(\.pinState, controller.pinState)
     }
 
     private func configureWindow(_ window: NSWindow) {
@@ -99,6 +121,7 @@ private struct PreviewContent: View {
             window.styleMask.insert(.fullSizeContentView)
         }
         window.isMovableByWindowBackground = false
+        controller.applyInitialPinStateIfNeeded()
     }
 }
 
@@ -107,33 +130,46 @@ private struct OutlineSidebar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // No header label — sidebar's existence + filename in titlebar is enough.
-            Color.clear.frame(height: 10)
+            Picker("", selection: $controller.sidebarMode) {
+                Text("Outline").tag(PreviewController.SidebarMode.outline)
+                Text("Files").tag(PreviewController.SidebarMode.files)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(.horizontal, 10)
+            .padding(.top, 8)
+            .padding(.bottom, 6)
 
-            if controller.outline.isEmpty {
-                Text("No headings")
-                    .foregroundStyle(.tertiary)
-                    .font(.system(size: 12))
-                    .padding(.horizontal, 16)
-                    .padding(.top, 4)
-                Spacer()
+            if controller.sidebarMode == .outline {
+                outlineContent
             } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(controller.outline) { entry in
-                            OutlineRow(entry: entry, controller: controller)
-                        }
-                    }
-                    .padding(.bottom, 8)
-                }
+                FileTreeView(controller: controller)
             }
         }
         .frame(maxHeight: .infinity, alignment: .top)
         .background(sidebarBackground)
         .overlay(alignment: .trailing) {
-            Rectangle()
-                .fill(Color.primary.opacity(0.06))
-                .frame(width: 1)
+            Rectangle().fill(Color.primary.opacity(0.06)).frame(width: 1)
+        }
+    }
+
+    @ViewBuilder
+    private var outlineContent: some View {
+        if controller.outline.isEmpty {
+            Text("No headings")
+                .foregroundStyle(.tertiary)
+                .font(.system(size: 12))
+                .padding(.horizontal, 16).padding(.top, 4)
+            Spacer()
+        } else {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(controller.outline) { entry in
+                        OutlineRow(entry: entry, controller: controller)
+                    }
+                }
+                .padding(.bottom, 8)
+            }
         }
     }
 
@@ -145,6 +181,94 @@ private struct OutlineSidebar: View {
                 return NSColor(red: 0xf1/255.0, green: 0xf2/255.0, blue: 0xf5/255.0, alpha: 1)
             }
         })
+    }
+}
+
+private struct FileTreeView: View {
+    @ObservedObject var controller: PreviewController
+    @ObservedObject var workspace: WorkspaceModel
+
+    init(controller: PreviewController) {
+        self.controller = controller
+        self.workspace = controller.workspace
+    }
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                if workspace.fileTree.isEmpty {
+                    Text("No Markdown files")
+                        .foregroundStyle(.tertiary).font(.system(size: 12))
+                        .padding(.horizontal, 16).padding(.top, 4)
+                } else {
+                    ForEach(workspace.fileTree) { node in
+                        FileTreeRow(node: node, depth: 0, controller: controller)
+                    }
+                }
+            }
+            .padding(.bottom, 8)
+        }
+        .overlay(alignment: .bottom) {
+            Button {
+                NotificationCenter.default.post(name: .openFolder, object: nil)
+            } label: {
+                Label("Open Folder…", systemImage: "folder")
+                    .font(.system(size: 11))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
+            }
+            .buttonStyle(.plain)
+            .background(.regularMaterial)
+        }
+    }
+}
+
+private struct FileTreeRow: View {
+    let node: FileNode
+    let depth: Int
+    @ObservedObject var controller: PreviewController
+    @State private var expanded = true
+
+    private var isCurrent: Bool {
+        !node.isDirectory && node.url.standardizedFileURL == controller.fileURL.standardizedFileURL
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                if node.isDirectory {
+                    expanded.toggle()
+                } else {
+                    controller.openFromTree(node.url)
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: node.isDirectory
+                          ? (expanded ? "chevron.down" : "chevron.right")
+                          : "doc.text")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 12)
+                    Text(node.name)
+                        .font(.system(size: 12, weight: isCurrent ? .semibold : .regular))
+                        .foregroundStyle(isCurrent ? Color.primary : Color.secondary)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                }
+                .padding(.leading, CGFloat(10 + depth * 12))
+                .padding(.trailing, 8)
+                .padding(.vertical, 4)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .background(isCurrent ? Color.primary.opacity(0.06) : Color.clear)
+
+            if node.isDirectory && expanded {
+                ForEach(node.children) { child in
+                    FileTreeRow(node: child, depth: depth + 1, controller: controller)
+                }
+            }
+        }
     }
 }
 
@@ -274,7 +398,12 @@ private struct FindBar: View {
                 .focused($fieldFocused)
                 .onSubmit { controller.findNext() }
                 .onChange(of: controller.findQuery) { _ in controller.findNext() }
-            if controller.findNotFound {
+            if controller.findTotal > 0 {
+                Text("\(controller.findCurrent) of \(controller.findTotal)")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            } else if controller.findNotFound {
                 Text("Not found")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
@@ -341,4 +470,86 @@ private struct WebViewRepresentable: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: WKWebView, context: Context) {}
+}
+
+private struct WordCountPill: View {
+    let words: Int
+    let minutes: Int
+
+    private var label: String {
+        let w = words.formatted(.number)
+        let wLabel = words == 1 ? "word" : "words"
+        return "\(w) \(wLabel) · \(minutes) min"
+    }
+
+    var body: some View {
+        Text(label)
+            .font(.system(size: 11))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 4)
+            .background(.regularMaterial, in: Capsule())
+            .overlay(Capsule().stroke(.tertiary.opacity(0.3)))
+            .shadow(color: .black.opacity(0.08), radius: 4, y: 1)
+            .help("\(words) words, about \(minutes) min read")
+    }
+}
+
+private struct SearchPalette: View {
+    @ObservedObject var controller: PreviewController
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        VStack {
+            VStack(spacing: 0) {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                    TextField("Search workspace…", text: $controller.searchQuery)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 15))
+                        .focused($focused)
+                        .onSubmit {
+                            if let first = controller.searchResults.first {
+                                controller.chooseSearchResult(first)
+                            }
+                        }
+                }
+                .padding(12)
+                if !controller.searchResults.isEmpty {
+                    Divider()
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 0) {
+                            ForEach(controller.searchResults) { r in
+                                Button { controller.chooseSearchResult(r) } label: {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(r.name).font(.system(size: 13, weight: .medium))
+                                        Text(r.snippet).font(.system(size: 11))
+                                            .foregroundStyle(.secondary).lineLimit(1)
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.horizontal, 12).padding(.vertical, 7)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    .frame(maxHeight: 280)
+                }
+            }
+            .frame(width: 460)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(.tertiary.opacity(0.4)))
+            .shadow(color: .black.opacity(0.2), radius: 20, y: 8)
+            .padding(.top, 80)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            Color.black.opacity(0.001)
+                .onTapGesture { controller.showSearchPalette = false }
+        )
+        .onExitCommand { controller.showSearchPalette = false }
+        .onAppear { DispatchQueue.main.async { focused = true } }
+    }
 }

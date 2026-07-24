@@ -1,0 +1,89 @@
+<h1>Markee Sample</h1>
+<p>A quick fixture covering the v1 feature set.</p>
+<h2>Text formatting</h2>
+<p>Plain <strong>bold</strong>, <em>italic</em>, <s>strikethrough</s>, <code>inline code</code>, and a <a href="https://example.com">link</a>.</p>
+<blockquote>
+<p>A blockquote. Useful for asides.</p>
+</blockquote>
+<h2>Lists</h2>
+<ul>
+<li>Bullet one</li>
+<li>Bullet two
+<ul>
+<li>Nested</li>
+</ul>
+</li>
+</ul>
+<ol>
+<li>Ordered</li>
+<li>Ordered</li>
+</ol>
+<h2>Task list</h2>
+<ul class="contains-task-list">
+<li class="task-list-item enabled"><label><input class="task-list-item-checkbox" checked=""type="checkbox"> Watch file</label></li>
+<li class="task-list-item enabled"><label><input class="task-list-item-checkbox" checked=""type="checkbox"> Re-render on save</label></li>
+<li class="task-list-item enabled"><label><input class="task-list-item-checkbox"type="checkbox"> Notarize for distribution</label></li>
+</ul>
+<h2>Table</h2>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th style="text-align:center">Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GFM tables</td>
+<td style="text-align:center">✅</td>
+</tr>
+<tr>
+<td>Footnotes</td>
+<td style="text-align:center">✅</td>
+</tr>
+<tr>
+<td>Math</td>
+<td style="text-align:center">✅</td>
+</tr>
+<tr>
+<td>Mermaid</td>
+<td style="text-align:center">✅</td>
+</tr>
+</tbody>
+</table>
+<h2>Code</h2>
+<pre class="hljs"><code>def hello(name: str) -&gt; str:
+    return f&quot;Hello, {name}!&quot;
+</code></pre>
+<h2>Math</h2>
+<p>Inline: $a^2 + b^2 = c^2$.</p>
+<p>Display:</p>
+<p>$$
+\int_0^\infty e^{-x^2},dx = \frac{\sqrt{\pi}}{2}
+$$</p>
+<h2>Mermaid</h2>
+<pre class="mermaid">graph LR
+    A[Edit .md] --&gt;|save| B(FSEvents)
+    B --&gt; C{Markee}
+    C --&gt; D[Re-render]
+    D --&gt; A
+</pre>
+<h2>Footnote</h2>
+<p>Here is a claim that needs a citation.<sup class="footnote-ref"><a href="#fn1" id="fnref1">[1]</a></sup></p>
+<h2>Definition list</h2>
+<dl>
+<dt>Markdown</dt>
+<dd>A lightweight markup language.</dd>
+<dt>WKWebView</dt>
+<dd>Apple’s modern WebView, used here for rendering.</dd>
+</dl>
+<h2>Cross-document links</h2>
+<p>A wiki link to <span class="markee-wikilink-broken" title="Unresolved link: sample">sample</span> and an unresolved one to <span class="markee-wikilink-broken" title="Unresolved link: Nonexistent Note">Nonexistent Note</span>.
+A relative link to <a href="./other.md">another doc</a>.</p>
+<hr class="footnotes-sep">
+<section class="footnotes">
+<ol class="footnotes-list">
+<li id="fn1" class="footnote-item"><p>This is the footnote text. <a href="#fnref1" class="footnote-backref">↩︎</a></p>
+</li>
+</ol>
+</section>

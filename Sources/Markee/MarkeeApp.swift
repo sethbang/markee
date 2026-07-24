@@ -12,6 +12,8 @@ struct MarkeeApp: App {
         }
         .defaultSize(width: 1000, height: 800)
         .commands {
+            SupportCommands()
+            DebugCommands()
             CommandGroup(after: .appInfo) {
                 Button("Check for Updates…") {
                     Updater.shared.checkForUpdatesMenuAction()
@@ -21,6 +23,9 @@ struct MarkeeApp: App {
                 Divider()
                 Button("Install Command Line Tool…") {
                     AppDelegate.installCLI()
+                }
+                Button("Open Folder as Workspace…") {
+                    NotificationCenter.default.post(name: .openFolder, object: nil)
                 }
             }
             CommandGroup(after: .toolbar) {
@@ -55,12 +60,26 @@ struct MarkeeApp: App {
                     NotificationCenter.default.post(name: .reloadFile, object: nil)
                 }
                 .keyboardShortcut("r", modifiers: [.command])
+
+                Divider()
+                Button("Back") {
+                    NotificationCenter.default.post(name: .navigateBack, object: nil)
+                }
+                .keyboardShortcut("[", modifiers: [.command])
+                Button("Forward") {
+                    NotificationCenter.default.post(name: .navigateForward, object: nil)
+                }
+                .keyboardShortcut("]", modifiers: [.command])
             }
             CommandGroup(after: .saveItem) {
                 Button("Export Standalone HTML…") {
                     NotificationCenter.default.post(name: .exportHTML, object: nil)
                 }
                 .keyboardShortcut("E", modifiers: [.command])
+                Button("Export PDF…") {
+                    NotificationCenter.default.post(name: .exportPDF, object: nil)
+                }
+                .keyboardShortcut("E", modifiers: [.command, .shift])
                 Button("Open in Editor at Current Heading") {
                     NotificationCenter.default.post(name: .openInEditor, object: nil)
                 }
@@ -70,6 +89,14 @@ struct MarkeeApp: App {
                     NotificationCenter.default.post(name: .copyMarkdownSource, object: nil)
                 }
                 .keyboardShortcut("C", modifiers: [.command, .shift])
+                Button("Copy Reflowed Markdown") {
+                    NotificationCenter.default.post(name: .copyReflowedMarkdown, object: nil)
+                }
+                .keyboardShortcut("C", modifiers: [.command, .option])
+                Button("Copy as Rendered Text") {
+                    NotificationCenter.default.post(name: .copyRenderedText, object: nil)
+                }
+                .keyboardShortcut("C", modifiers: [.command, .option, .shift])
                 Button("Reveal in Finder") {
                     NotificationCenter.default.post(name: .revealInFinder, object: nil)
                 }
@@ -94,7 +121,16 @@ struct MarkeeApp: App {
                     NotificationCenter.default.post(name: .findPrevious, object: nil)
                 }
                 .keyboardShortcut("G", modifiers: [.command, .shift])
+                Button("Search Workspace…") {
+                    NotificationCenter.default.post(name: .searchPalette, object: nil)
+                }
+                .keyboardShortcut("O", modifiers: [.command, .shift])
             }
+            WindowPinCommands()
+        }
+
+        Settings {
+            SettingsView()
         }
     }
 }
@@ -102,6 +138,7 @@ struct MarkeeApp: App {
 extension Notification.Name {
     static let toggleOutline = Notification.Name("MarkeeToggleOutline")
     static let exportHTML = Notification.Name("MarkeeExportHTML")
+    static let exportPDF = Notification.Name("MarkeeExportPDF")
     static let openInEditor = Notification.Name("MarkeeOpenInEditor")
     static let findInPreview = Notification.Name("MarkeeFindInPreview")
     static let printPreview = Notification.Name("MarkeePrintPreview")
@@ -113,7 +150,17 @@ extension Notification.Name {
     static let findPrevious = Notification.Name("MarkeeFindPrevious")
     static let reloadFile = Notification.Name("MarkeeReloadFile")
     static let copyMarkdownSource = Notification.Name("MarkeeCopyMarkdownSource")
+    static let copyReflowedMarkdown = Notification.Name("MarkeeCopyReflowedMarkdown")
+    static let copyRenderedText = Notification.Name("MarkeeCopyRenderedText")
     static let revealInFinder = Notification.Name("MarkeeRevealInFinder")
+    static let toggleFloatOnTop = Notification.Name("MarkeeToggleFloatOnTop")
+    static let toggleAllSpaces = Notification.Name("MarkeeToggleAllSpaces")
+    static let toggleFollowActive = Notification.Name("MarkeeToggleFollowActive")
+    static let toggleGhostMode = Notification.Name("MarkeeToggleGhostMode")
+    static let navigateBack = Notification.Name("MarkeeNavigateBack")
+    static let navigateForward = Notification.Name("MarkeeNavigateForward")
+    static let openFolder = Notification.Name("MarkeeOpenFolder")
+    static let searchPalette = Notification.Name("MarkeeSearchPalette")
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -127,6 +174,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Updater.shared.checkOnLaunch()
+        SupportController.shared.registerLaunch()
+        UsageTracker.shared.recordActiveDay()
+        // Resolve the bundled doc before consuming the trigger: consume stamps
+        // the 30-day clock, so ordering it first would "spend" the month in any
+        // context where the resource is absent (e.g. swift run, no app bundle).
+        guard let doc = Bundle.main.url(forResource: "Support Markee", withExtension: "md"),
+              SupportController.shared.consumeSupportDocTrigger()
+        else { return }
+        // Delayed so restored document windows settle first; the support doc
+        // opens after them instead of racing window restoration.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            NSDocumentController.shared.openDocument(
+                withContentsOf: doc, display: true, completionHandler: { _, _, _ in })
+        }
     }
 
     static func installCLI() {

@@ -10,7 +10,7 @@ enum EditorLaunchError: Error {
         case .noEditorFound:
             return "No supported editor found on $PATH. Tried: "
                 + EditorLauncher.candidates.joined(separator: ", ")
-                + ". Override with `defaults write com.markee.preview editor \"<name>\"`."
+                + ". Set one in Markee ▸ Settings ▸ General ▸ Editor."
         case .launchFailed(let s):
             return "Couldn't launch editor: \(s)"
         }
@@ -24,6 +24,10 @@ enum EditorLauncher {
         "cursor", "code", "zed", "subl", "mate", "mvim", "hx"
     ]
 
+    // Serial queue that serializes all reads and writes of pathCache to prevent
+    // data races when availableEditors() resolves binaries off the main thread
+    // concurrently with preferredEditor() on the main actor.
+    private static let cacheQueue = DispatchQueue(label: "com.markee.EditorLauncher.pathCache")
     private static var pathCache: [String: String] = [:]
 
     /// Editor names we'll pass through `zsh -ilc 'command -v <name>'` must be
@@ -62,26 +66,28 @@ enum EditorLauncher {
     }
 
     /// Resolve a CLI name to an absolute path. Tries inherited PATH first,
-    /// then bounces through `zsh -ilc 'which X'` so Homebrew / fnm / etc.
+    /// then bounces through `zsh -ilc 'command -v X'` so Homebrew / fnm / etc.
     /// shells-only PATH entries get a chance.
     static func resolveBinary(_ name: String) -> String? {
-        if let cached = pathCache[name] { return cached.isEmpty ? nil : cached }
+        if let cached = cacheQueue.sync(execute: { pathCache[name] }) {
+            return cached.isEmpty ? nil : cached
+        }
         guard isSafeEditorName(name) else {
-            pathCache[name] = ""
+            cacheQueue.sync { pathCache[name] = "" }
             return nil
         }
 
         if let p = runCapturing("/usr/bin/which", [name]),
            let trimmed = trimmedAbsolutePath(p) {
-            pathCache[name] = trimmed
+            cacheQueue.sync { pathCache[name] = trimmed }
             return trimmed
         }
         if let p = runCapturing("/bin/zsh", ["-ilc", "command -v \(name)"]),
            let trimmed = trimmedAbsolutePath(p) {
-            pathCache[name] = trimmed
+            cacheQueue.sync { pathCache[name] = trimmed }
             return trimmed
         }
-        pathCache[name] = ""
+        cacheQueue.sync { pathCache[name] = "" }
         return nil
     }
 
@@ -101,6 +107,16 @@ enum EditorLauncher {
             }
         }
         return nil
+    }
+
+    /// Resolve which candidate editors are actually installed, off the main
+    /// thread (resolveBinary shells out per name). Calls back on the main queue
+    /// with the installed candidate names, in candidate order.
+    static func availableEditors(_ completion: @escaping ([String]) -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let found = candidates.filter { resolveBinary($0) != nil }
+            DispatchQueue.main.async { completion(found) }
+        }
     }
 
     static func open(file: URL, line: Int?) -> Result<Void, EditorLaunchError> {
