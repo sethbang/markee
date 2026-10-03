@@ -1,5 +1,10 @@
 import WebKit
 
+/// The page couldn't render the document (renderer missing or threw).
+public struct RenderError: Error {
+    public init() {}
+}
+
 /// Headless Markdown renderer. Owns a `WKWebView` wired with Markee's scheme
 /// handlers, loads `template.html`, and exposes async `waitUntilReady()` /
 /// `render(...)`. This is the extension-side equivalent of the render path
@@ -82,7 +87,9 @@ public final class WebRenderer: NSObject, WKScriptMessageHandler, WKNavigationDe
 
     /// Render `source`. Resolves once the synchronous render call returns
     /// (text + layout in the DOM); asynchronous Mermaid may still finish after.
-    public func render(source: String, fileName: String, readOnly: Bool) async {
+    /// Throws if the page's renderer failed or isn't loaded, so Quick Look shows
+    /// its own fallback instead of a blank card.
+    public func render(source: String, fileName: String, readOnly: Bool) async throws {
         let payload: [String: Any] = [
             "source": source,
             "fileName": fileName,
@@ -92,12 +99,15 @@ public final class WebRenderer: NSObject, WKScriptMessageHandler, WKNavigationDe
         // `payload` always serializes to a JSON *object* literal, which is
         // also a valid JS expression — safe to interpolate as the argument.
         guard let data = try? JSONSerialization.data(withJSONObject: payload),
-              let json = String(data: data, encoding: .utf8) else { return }
-        await withCheckedContinuation { continuation in
-            webView.evaluateJavaScript("window.markee && window.markee.render(\(json));") { _, _ in
-                continuation.resume()
+              let json = String(data: data, encoding: .utf8) else { throw RenderError() }
+        let ok: Bool = try await withCheckedThrowingContinuation { continuation in
+            webView.evaluateJavaScript("!!(window.markee && window.markee.render(\(json)));") { result, error in
+                if let error { continuation.resume(throwing: error) } else {
+                    continuation.resume(returning: result as? Bool ?? false)
+                }
             }
         }
+        guard ok else { throw RenderError() }
     }
 
     /// The main frame only ever holds the template; link clicks in a Quick Look

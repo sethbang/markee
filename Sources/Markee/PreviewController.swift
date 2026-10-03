@@ -57,6 +57,7 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
     @Published var searchQuery: String = "" { didSet { scheduleSearch() } }
     @Published var searchResults: [WorkspaceSearch.Result] = []
     private var searchWork: DispatchWorkItem?
+    private let searchQueue = DispatchQueue(label: "com.markee.search", qos: .userInitiated)
 
     let webView: MarkeeWebView
     let bundleHandler = BundleSchemeHandler()
@@ -248,10 +249,15 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
         }
         let work = DispatchWorkItem { [weak self] in
             let results = WorkspaceSearch.search(query: query, files: files)
-            DispatchQueue.main.async { self?.searchResults = results }
+            DispatchQueue.main.async {
+                // A slower, older search must not overwrite newer results (Return
+                // would then open the wrong file), nor repopulate a closed palette.
+                guard let self, self.showSearchPalette, self.searchQuery == query else { return }
+                self.searchResults = results
+            }
         }
         searchWork = work
-        DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.15, execute: work)
+        searchQueue.asyncAfter(deadline: .now() + 0.15, execute: work)
     }
 
     func chooseSearchResult(_ result: WorkspaceSearch.Result) {
@@ -294,10 +300,14 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
 
     private func startWatching() {
         watcher?.cancel()
-        watcher = FileWatcher(url: fileURL) { [weak self] in
+        let name = fileURL.lastPathComponent
+        watcher = FileWatcher(url: fileURL, onMissing: { [weak self] in
+            // Cleared by the next successful load if the file comes back.
+            self?.errorBanner = "\(name) was moved or deleted. Markee will reload it if it reappears."
+        }, onChange: { [weak self] in
             UsageTracker.shared.recordRerender()
             self?.loadFromDisk(reason: "fs-change")
-        }
+        })
     }
 
     private func loadFromDisk(reason: String) {
@@ -350,14 +360,9 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
     // MARK: - Outline toggle / export
 
     @objc private func handleToggleOutline() {
-        // Only act on the front-most window's controller — we listen via NotificationCenter
-        // and SwiftUI binds one controller per window. Each window's controller will toggle;
-        // the visual switch only matters for the key window since others aren't visible-key.
-        if NSApp.keyWindow?.contentViewController?.view.window === webView.window?.windowController?.window
-            || webView.window?.isKeyWindow == true {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                showOutline.toggle()
-            }
+        guard webView.window?.isKeyWindow == true else { return }
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+            showOutline.toggle()
         }
     }
 
@@ -894,6 +899,12 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
         reloadTemplateAndRerender()
     }
 
+    /// WebContent crashed or was killed (memory pressure): the page is gone and
+    /// later renders would silently no-op, so rebuild it.
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        reloadTemplateAndRerender()
+    }
+
     private func reloadTemplateAndRerender() {
         templateLoaded = false
         pendingRender = lastGoodSource.isEmpty ? pendingRender : lastGoodSource
@@ -976,8 +987,7 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
 
     /// Scroll the WebView to a given heading id.
     func scrollToHeading(_ id: String) {
-        let safe = id.replacingOccurrences(of: "\"", with: "\\\"")
-        let js = "window.markee && window.markee.scrollToHeading(\"\(safe)\");"
+        let js = "window.markee && window.markee.scrollToHeading(\(jsString(id)));"
         webView.evaluateJavaScript(js, completionHandler: nil)
     }
 }

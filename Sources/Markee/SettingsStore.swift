@@ -12,6 +12,19 @@ enum ThemeOverride: String, CaseIterable {
     case system, light, dark
 }
 
+/// UserDefaults keys for every preference. Nonisolated so code running off
+/// the main actor (the editor lookup) reads the same keys as `SettingsStore`.
+enum SettingsKey {
+    static let theme = "MarkeeThemeOverride"
+    static let accent = "MarkeeAccentColor"
+    static let baseFont = "MarkeeBaseFontSize"
+    static let cssPath = "MarkeeCustomCSSPath"
+    static let updateCheck = "MarkeeUpdateCheckEnabled"
+    static let defaultFloat = "MarkeeDefaultFloatOnTop"
+    /// Un-prefixed for compatibility with `defaults write com.markee.preview editor …`.
+    static let editor = "editor"
+}
+
 /// Single source of truth for user preferences. Backed by `UserDefaults`;
 /// every mutation persists and broadcasts `.settingsDidChange`. Owns the one
 /// shared FileWatcher for the custom-CSS file (custom CSS is global, so one
@@ -26,17 +39,7 @@ final class SettingsStore: ObservableObject {
     private var cssWatcher: FileWatcher?
     private var cssText: String = ""
 
-    private enum Key {
-        static let theme = "MarkeeThemeOverride"
-        static let accent = "MarkeeAccentColor"
-        static let baseFont = "MarkeeBaseFontSize"
-        static let cssPath = "MarkeeCustomCSSPath"
-        static let updateCheck = "MarkeeUpdateCheckEnabled"
-        static let defaultFloat = "MarkeeDefaultFloatOnTop"
-        // Un-prefixed to match the key EditorLauncher.preferredEditor() reads
-        // from UserDefaults.standard — changing this key name breaks that contract.
-        static let editor = "editor"
-    }
+    private typealias Key = SettingsKey
 
     init(defaults: UserDefaults) {
         self.defaults = defaults

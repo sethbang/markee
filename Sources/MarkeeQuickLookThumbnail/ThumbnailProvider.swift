@@ -61,14 +61,18 @@ final class ThumbnailProvider: QLThumbnailProvider {
                               backing: .buffered,
                               defer: false)
         window.contentView = renderer.webView
+        // Thumbnails are drawn on a white card and cached by Finder across
+        // appearance switches: always render the light theme.
+        window.appearance = NSAppearance(named: .aqua)
+        renderer.webView.appearance = NSAppearance(named: .aqua)
 
         try await renderer.loadTemplate()
         try await renderer.waitUntilReady()
 
         let source = try readFileWithFallback(at: fileURL)
-        await renderer.render(source: source,
-                              fileName: fileURL.lastPathComponent,
-                              readOnly: true)
+        try await renderer.render(source: source,
+                                  fileName: fileURL.lastPathComponent,
+                                  readOnly: true)
         try Task.checkCancellation()
 
         // Fixed settle delay: render() resolves when the synchronous JS call

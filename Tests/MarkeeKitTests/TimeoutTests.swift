@@ -23,4 +23,41 @@ final class TimeoutTests: XCTestCase {
             XCTFail("expected TimeoutError, got \(error)")
         }
     }
+
+    /// An operation that ignores cancellation must not hold the caller past
+    /// the deadline (the thumbnail extension's 2.5 s budget depends on it).
+    func test_returnsAtDeadline_evenIfOperationIgnoresCancellation() async {
+        let start = Date()
+        do {
+            _ = try await withTimeout(seconds: 0.2) { () async throws -> Int in
+                Thread.sleep(forTimeInterval: 2)   // non-cooperative
+                return 1
+            }
+            XCTFail("expected a timeout error")
+        } catch {
+            XCTAssertTrue(error is TimeoutError)
+        }
+        XCTAssertLessThan(Date().timeIntervalSince(start), 1.0)
+    }
+
+    func test_propagatesOperationError() async {
+        struct Boom: Error {}
+        do {
+            _ = try await withTimeout(seconds: 1) { () async throws -> Int in throw Boom() }
+            XCTFail("expected Boom")
+        } catch {
+            XCTAssertTrue(error is Boom)
+        }
+    }
+
+    func test_callerCancellationThrows() async {
+        let task = Task {
+            try await withTimeout(seconds: 5) { () async throws -> Int in
+                try await Task.sleep(for: .seconds(5)); return 1
+            }
+        }
+        task.cancel()
+        let result = await task.result
+        XCTAssertThrowsError(try result.get())
+    }
 }

@@ -11,19 +11,28 @@
     "use strict";
 
     /**
-     * Slug a heading-text string into an html-id-safe form.
-     * Accepts an optional `counts` map for de-duplication across multiple calls.
+     * Slug a heading-text string into an html-id-safe form. Unicode letters and
+     * digits are kept (CJK headings don't all collapse to "section", "café"
+     * stays "café").
+     *
+     * `used` (optional Map) de-duplicates across calls: a repeat gets the first
+     * free `-N` suffix, never one already emitted — or pre-registered, which is
+     * how explicit `{#id}` anchors are kept unique (`used.set(id, 1)`).
      */
-    function slugify(text, counts) {
+    function slugify(text, used) {
         const base = String(text)
             .toLowerCase()
-            .replace(/[^\w\s-]/g, "")
+            .replace(/[^\p{L}\p{N}\s_-]/gu, "")
             .trim()
             .replace(/\s+/g, "-") || "section";
-        if (!counts) return base;
-        const n = counts.get(base) || 0;
-        counts.set(base, n + 1);
-        return n === 0 ? base : `${base}-${n}`;
+        if (!used) return base;
+        if (!used.has(base)) { used.set(base, 1); return base; }
+        let n = used.get(base);
+        let slug;
+        do { slug = `${base}-${n}`; n++; } while (used.has(slug));
+        used.set(base, n);
+        used.set(slug, 1);
+        return slug;
     }
 
     /**

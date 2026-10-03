@@ -175,3 +175,60 @@ final class StagedBundleValidationTests: XCTestCase {
             bundleID: "com.markee.test", requirement: #"identifier "com.markee.test""#))
     }
 }
+
+/// The bash swap helper, run for real against temp directories (relaunch
+/// stubbed with /usr/bin/true, PID of an already-exited process).
+final class SwapScriptTests: XCTestCase {
+    private var dir: URL!
+
+    override func setUpWithError() throws {
+        dir = FileManager.default.temporaryDirectory.appendingPathComponent("MarkeeSwap-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    }
+    override func tearDownWithError() throws { try? FileManager.default.removeItem(at: dir) }
+
+    private func deadPID() throws -> String {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/true")
+        try p.run(); p.waitUntilExit()
+        return String(p.processIdentifier)
+    }
+
+    private func runSwap(new: URL, dest: URL) throws -> Int32 {
+        let script = dir.appendingPathComponent("swap.sh")
+        try Updater.swapScript.write(to: script, atomically: true, encoding: .utf8)
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/bash")
+        p.arguments = [script.path, try deadPID(), new.path, dest.path, "/usr/bin/true"]
+        try p.run(); p.waitUntilExit()
+        return p.terminationStatus
+    }
+
+    private func makeApp(_ url: URL, marker: String) throws {
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        try marker.write(to: url.appendingPathComponent("marker"), atomically: true, encoding: .utf8)
+    }
+
+    func test_swapReplacesInstalledAppAndCleansUp() throws {
+        let staging = dir.appendingPathComponent("staging")
+        let new = staging.appendingPathComponent("Markee.app")
+        let dest = dir.appendingPathComponent("Applications/Markee.app")
+        try makeApp(new, marker: "new")
+        try makeApp(dest, marker: "old")
+
+        XCTAssertEqual(try runSwap(new: new, dest: dest), 0)
+        XCTAssertEqual(try String(contentsOf: dest.appendingPathComponent("marker"), encoding: .utf8), "new")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dest.path + ".old"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: staging.path))
+    }
+
+    func test_failedCopyRestoresPreviousVersion() throws {
+        let dest = dir.appendingPathComponent("Applications/Markee.app")
+        try makeApp(dest, marker: "old")
+        let missing = dir.appendingPathComponent("nope/Markee.app")
+
+        XCTAssertEqual(try runSwap(new: missing, dest: dest), 1)
+        XCTAssertEqual(try String(contentsOf: dest.appendingPathComponent("marker"), encoding: .utf8), "old")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dest.path + ".old"))
+    }
+}

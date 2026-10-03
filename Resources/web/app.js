@@ -209,9 +209,11 @@
     }
 
     // ---- render -------------------------------------------------------------
+    // Returns true once the document is in the DOM, false if it couldn't be
+    // rendered (Quick Look then falls back to the system preview/icon).
     function render(payload) {
         const article = document.getElementById("content");
-        if (!article) return;
+        if (!article) return false;
         isReadOnly = !!payload.readOnly;
         const isNav = !!payload.navigated;   // true on cross-file navigation
         // Re-render invalidates find ranges; reset the Swift counter to the
@@ -223,7 +225,7 @@
             showToast("Renderer not loaded. Run 'just fetch-vendor' to install vendored libs.");
             article.innerHTML = `<pre style="white-space:pre-wrap">${escapeHtml(payload.source || "")}</pre>`;
             post("outline", { items: [] });
-            return;
+            return false;
         }
 
         // Update <base> so relative URLs in the source resolve against the doc dir
@@ -257,7 +259,7 @@
             const msg = "Markdown render error: " + (err && err.message ? err.message : String(err));
             post("error", { message: msg });
             showToast(msg);
-            return;
+            return false;
         }
 
         article.innerHTML = html;
@@ -274,6 +276,9 @@
         // Assign ids to headings + build outline
         const items = [];
         const headingEls = Array.from(article.querySelectorAll("h1, h2, h3, h4, h5, h6"));
+        // Explicit ids ({#id}, raw HTML) are taken first so generated slugs
+        // never duplicate them.
+        article.querySelectorAll("[id]").forEach((el) => slugCount.set(el.id, 1));
         // Markdown headings carry data-line from render-core; raw-HTML <hN>
         // tags have no source map, so their outline entry has no line.
         headingEls.forEach((h) => {
@@ -359,7 +364,7 @@
                 window.scrollTo(0, targetY);
             }
         }
-
+        return true;
     }
 
     // decodeURIComponent throws on stray `%` (e.g. `#50%-off`); fall back raw.
@@ -403,10 +408,27 @@
         document.head.appendChild(s);
     }
 
+    // Effective theme: the Preferences override (data-theme) wins over the OS.
+    function mermaidTheme() {
+        const forced = document.documentElement.getAttribute("data-theme");
+        const dark = forced ? forced === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+        return dark ? "dark" : "default";
+    }
+
+    function initMermaid() {
+        try {
+            window.mermaid.initialize({ startOnLoad: false, theme: mermaidTheme() });
+        } catch (_) { /* ignore */ }
+    }
+
     function runMermaid(article) {
         if (!window.mermaid) return;
         try {
             article.querySelectorAll("pre.mermaid").forEach((el) => {
+                // Mermaid replaces the source with its SVG; keep the source so
+                // a theme change can redraw the diagram.
+                if (!el.hasAttribute("data-processed")) el.dataset.mermaidSource = el.textContent;
+                else if (el.dataset.mermaidSource !== undefined) el.textContent = el.dataset.mermaidSource;
                 el.removeAttribute("data-processed");
             });
             window.mermaid.run({ querySelector: "#content pre.mermaid" }).catch((e) => {
@@ -464,7 +486,9 @@
             acceptNode(node) {
                 if (!node.nodeValue) return NodeFilter.FILTER_REJECT;
                 const p = node.parentElement;
-                if (!p || p.closest(".markee-chrome, script, style")) return NodeFilter.FILTER_REJECT;
+                // .katex-mathml is KaTeX's visually-hidden MathML twin: matches
+                // there would be counted and stepped to but never visible.
+                if (!p || p.closest(".markee-chrome, .katex-mathml, script, style")) return NodeFilter.FILTER_REJECT;
                 return NodeFilter.FILTER_ACCEPT;
             }
         });
@@ -562,6 +586,7 @@
         clone.querySelectorAll(".markee-chrome").forEach((e) => e.remove());
         // Source-line stamps only mean something next to the file on disk.
         clone.querySelectorAll("[data-line]").forEach((e) => e.removeAttribute("data-line"));
+        clone.querySelectorAll("[data-mermaid-source]").forEach((e) => e.removeAttribute("data-mermaid-source"));
 
         // Inline images as data URIs
         const imgs = Array.from(clone.querySelectorAll("img"));
@@ -685,6 +710,7 @@ ${cssParts.join("\n\n")}
             else if (theme === "light") darkSheet.media = "not all";
             else darkSheet.media = "screen and (prefers-color-scheme: dark)";
         }
+        redrawMermaidIfThemeChanged();
 
         // Accent + base font as :root variable overrides, then the user's CSS,
         // all inside the one screen-scoped block.
@@ -728,15 +754,22 @@ ${cssParts.join("\n\n")}
     // with the current OS color scheme. Actual diagram rendering is driven by
     // the onload waiter callback queued in render(), not from here.
     window.addEventListener("markee:mermaid-ready", () => {
-        if (window.mermaid && typeof window.mermaid.initialize === "function") {
-            try {
-                window.mermaid.initialize({
-                    startOnLoad: false,
-                    theme: matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "default"
-                });
-            } catch (_) { /* ignore */ }
-        }
+        if (window.mermaid && typeof window.mermaid.initialize === "function") initMermaid();
     });
+
+    // Diagrams are drawn in the theme current at render time; redraw them when
+    // the effective theme changes (Preferences override or OS appearance).
+    let lastMermaidTheme = null;
+    function redrawMermaidIfThemeChanged() {
+        const theme = mermaidTheme();
+        if (theme === lastMermaidTheme) return;
+        lastMermaidTheme = theme;
+        const article = document.getElementById("content");
+        if (!window.mermaid || !article || !article.querySelector("pre.mermaid")) return;
+        initMermaid();
+        runMermaid(article);
+    }
+    matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redrawMermaidIfThemeChanged);
 
     window.addEventListener("scroll", scrollHandler, { passive: true });
     window.addEventListener("resize", scrollHandler, { passive: true });

@@ -139,6 +139,7 @@ final class Updater {
 
     private let repo = "sethbang/markee"
     private var isRunning = false
+    private var isInstalling = false
 
     private static let lastCheckKey = "MarkeeLastUpdateCheck"
     private static let skippedVersionKey = "MarkeeSkippedVersion"
@@ -155,10 +156,7 @@ final class Updater {
 
     /// Once-a-day silent launch check. Throttled by a UserDefaults timestamp.
     func checkOnLaunch() {
-        // Respect the Preferences toggle (defaults to on when the key is unset).
-        if UserDefaults.standard.object(forKey: "MarkeeUpdateCheckEnabled") as? Bool == false {
-            return
-        }
+        guard SettingsStore.shared.updateCheckEnabled else { return }
         if let last = UserDefaults.standard.object(forKey: Self.lastCheckKey) as? Date,
            Date().timeIntervalSince(last) < 24 * 60 * 60 {
             return
@@ -172,7 +170,7 @@ final class Updater {
     }
 
     private func check(userInitiated: Bool) async {
-        guard !isRunning else { return }
+        guard !isRunning, !isInstalling else { return }
         isRunning = true
         defer { isRunning = false }
 
@@ -315,7 +313,7 @@ final class Updater {
     /// Developer ID Application certificate of Markee's team, with Markee's
     /// bundle id. HTTPS alone only proves the bytes came from GitHub — this
     /// proves they came from us, so a hijacked release can't ship a foreign app.
-    static let updateRequirement = """
+    nonisolated static let updateRequirement = """
         anchor apple generic and identifier "com.markee.preview" \
         and certificate 1[field.1.2.840.113635.100.6.2.6] exists \
         and certificate leaf[field.1.2.840.113635.100.6.1.13] exists \
@@ -358,6 +356,11 @@ final class Updater {
     // MARK: - Install
 
     func installUpdate(_ release: GitHubRelease) async {
+        // `isRunning` only covers the check; a second "Update Now" (from a
+        // later check) must not start a parallel download + swap.
+        guard !isInstalling else { return }
+        isInstalling = true
+        defer { isInstalling = false }
         let installPath = Bundle.main.bundlePath
         let parent = (installPath as NSString).deletingLastPathComponent
         guard FileManager.default.isWritableFile(atPath: parent) else {
@@ -395,40 +398,51 @@ final class Updater {
         try runProcess("/usr/bin/xattr", ["-dr", "com.apple.quarantine", bundle.path])
     }
 
-    /// Write a detached shell helper that waits for this process to quit, swaps
-    /// the bundle in place (keeping a `.old` backup until success), and
-    /// relaunches. The helper outlives this process by design — not waited on.
-    nonisolated static func launchSwapHelper(newBundle: URL, installPath: String) throws {
-        let script = """
+    /// The detached swap helper: waits for this process (`$1`) to quit, swaps
+    /// `$2` into `$3` keeping a `.old` backup until success, and relaunches
+    /// (with `$4`, default `open`).
+    /// If the app is still running after ~60 s it gives up without touching
+    /// the installed copy — replacing a live bundle corrupts it. Exits 0 on
+    /// success, 1 on a recoverable failure (previous version restored), 2 if
+    /// restoring failed (backup left in place), 3 if the app never quit.
+    nonisolated static let swapScript = """
         #!/bin/bash
-        PID="$1"; NEW="$2"; DEST="$3"
+        PID="$1"; NEW="$2"; DEST="$3"; OPEN="${4:-open}"   # $4: tests stub out relaunch
         trap 'rm -f "$0"' EXIT
         WAITED=0
         while kill -0 "$PID" 2>/dev/null; do
           sleep 0.2
           WAITED=$((WAITED + 1))
-          if [ "$WAITED" -ge 300 ]; then break; fi
+          if [ "$WAITED" -ge 300 ]; then
+            osascript -e "display alert \\"Markee update not installed\\" message \\"Markee didn't quit, so the update was skipped. Quit Markee and check for updates again.\\"" 2>/dev/null || true
+            exit 3
+          fi
         done
         BACKUP="${DEST}.old"
         rm -rf "$BACKUP"
         if ! mv "$DEST" "$BACKUP"; then
-          open "$DEST" 2>/dev/null || true
+          "$OPEN" "$DEST" 2>/dev/null || true
           exit 1
         fi
         if /usr/bin/ditto "$NEW" "$DEST"; then
           rm -rf "$BACKUP"
           rm -rf "$(dirname "$NEW")"
-          open "$DEST"
+          "$OPEN" "$DEST"
         else
           rm -rf "$DEST"
           if ! mv "$BACKUP" "$DEST"; then
             osascript -e "display alert \\"Markee update failed\\" message \\"Could not restore Markee. Your previous version is saved at: $BACKUP\\"" 2>/dev/null || true
             exit 2
           fi
-          open "$DEST"
+          "$OPEN" "$DEST"
           exit 1
         fi
         """
+
+    /// Write `swapScript` to a temp file and launch it detached. It outlives
+    /// this process by design — not waited on.
+    nonisolated static func launchSwapHelper(newBundle: URL, installPath: String) throws {
+        let script = swapScript
         let scriptURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("markee-swap-\(UUID().uuidString).sh")
         try script.write(to: scriptURL, atomically: true, encoding: .utf8)

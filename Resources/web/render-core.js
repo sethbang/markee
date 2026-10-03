@@ -68,7 +68,7 @@
     // Local slug for [[Note#Heading]] fragments. Mirrors util.js slugify's base
     // branch; kept inline so render-core stays Node-requirable without util.js.
     function wikiSlug(s) {
-        return String(s).toLowerCase().replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "-") || "section";
+        return String(s).toLowerCase().replace(/[^\p{L}\p{N}\s_-]/gu, "").trim().replace(/\s+/g, "-") || "section";
     }
 
     // markdown-it inline rule for [[target]], [[target#heading]], [[target|alias]].
@@ -94,7 +94,10 @@
                 const label = alias || rawTarget.trim() || inner;
 
                 const index = (state.env && state.env.wikiIndex) || {};
-                const href = target ? index[target.toLowerCase()] : null;
+                // Own keys only: `[[constructor]]` must not resolve to Object.prototype.
+                const key = target.toLowerCase();
+                const href = target && Object.prototype.hasOwnProperty.call(index, key)
+                    && typeof index[key] === "string" ? index[key] : null;
                 if (href) {
                     const full = heading ? href + "#" + wikiSlug(heading) : href;
                     const open = state.push("link_open", "a", 1);

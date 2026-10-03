@@ -134,10 +134,11 @@ Markee auto-detects the first available editor from this list on your `PATH`
 (via your login shell, so Homebrew / fnm / asdf entries work):
 
 ```
-cursor → code → zed → subl → mate → mvim → hx
+cursor → code → zed → subl → mate → mvim
 ```
 
-Override by setting a preference:
+Override it in **Markee ▸ Settings ▸ General ▸ Editor**, or with a preference
+(a bare command name, not a path):
 
 ```sh
 defaults write com.markee.preview editor "zed"
@@ -145,8 +146,10 @@ defaults write com.markee.preview editor "zed"
 
 For each editor, Markee constructs the right "jump to line" syntax —
 `code -g path:line:col`, `zed path:line:col`, `subl path:line`,
-`mate -l line path`, `mvim +line path`, `hx path:line`. The full list of
-supported editors is in `Sources/Markee/EditorLauncher.swift`.
+`mate -l line path`, `mvim +line path`. The full list of supported editors is
+in `Sources/Markee/EditorLauncher.swift`. Terminal editors (`nvim`, `vim`,
+`hx`, …) aren't supported: Markee launches the editor without a terminal, so
+use a GUI build such as `mvim`.
 
 ## Develop
 

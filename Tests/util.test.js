@@ -23,6 +23,22 @@ test("slugify — empty falls back to 'section'", () => {
     assert.equal(slugify("!@#$"), "section");
 });
 
+test("slugify — keeps Unicode letters and digits", () => {
+    assert.equal(slugify("Café au lait"), "café-au-lait");
+    assert.equal(slugify("概要"), "概要");
+    assert.equal(slugify("Шаг 2"), "шаг-2");
+});
+
+test("slugify — suffixes never collide with emitted or reserved slugs", () => {
+    const used = new Map();
+    assert.equal(slugify("Foo", used), "foo");
+    assert.equal(slugify("Foo", used), "foo-1");
+    assert.equal(slugify("Foo 1", used), "foo-1-1");
+    assert.equal(slugify("Foo", used), "foo-2");
+    const reserved = new Map([["intro", 1]]);
+    assert.equal(slugify("Intro", reserved), "intro-1");
+});
+
 test("slugify — counts map de-duplicates across calls", () => {
     const counts = new Map();
     assert.equal(slugify("Setup", counts), "setup");

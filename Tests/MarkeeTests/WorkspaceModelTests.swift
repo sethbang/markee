@@ -53,6 +53,25 @@ final class WorkspaceModelTests: XCTestCase {
                        "markee-doc://doc/docs/api/")
     }
 
+    func test_pathsWithURLMetacharactersArePercentEncoded() throws {
+        _ = try touch("C# notes/50% off?.md")
+        let r = WorkspaceModel.enumerate(root: tmp.standardizedFileURL)
+        let href = try XCTUnwrap(r.wikiIndex["50% off?"])
+        XCTAssertEqual(href, "markee-doc://doc/C%23%20notes/50%25%20off%3F.md")
+        XCTAssertEqual(URL(string: href)?.path, "/C# notes/50% off?.md")
+        XCTAssertEqual(WorkspaceModel.docBase(for: URL(fileURLWithPath: "/repo/C# notes/x.md"),
+                                              root: URL(fileURLWithPath: "/repo")),
+                       "markee-doc://doc/C%23%20notes/")
+    }
+
+    func test_sameStemResolvesToShallowestFile() throws {
+        _ = try touch("docs/api/readme.md")
+        _ = try touch("docs/readme.md")
+        _ = try touch("z/readme.md")
+        let r = WorkspaceModel.enumerate(root: tmp.standardizedFileURL)
+        XCTAssertEqual(r.wikiIndex["readme"], "markee-doc://doc/docs/readme.md")
+    }
+
     func test_enumerate_indexesMarkdownSkipsHeavyDirsBuildsTree() throws {
         _ = try touch("docs/guide.md")
         _ = try touch("docs/api/ref.md")

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# markee — open a Markdown file in Markee.app
-# Usage: markee [file.md]
+# markee — open Markdown files in Markee.app
+# Usage: markee [file.md ...]
 # If no file is given, just brings the app to the foreground.
 
 set -euo pipefail
@@ -12,19 +12,24 @@ if [ $# -eq 0 ]; then
     exit 0
 fi
 
-target="$1"
-
-# Resolve to absolute path (realpath isn't on macOS by default)
-if [ -e "$target" ]; then
-    abs="$(cd "$(dirname "$target")" && pwd)/$(basename "$target")"
-else
-    echo "markee: file not found: $target" >&2
-    exit 1
-fi
+# Resolve every argument to an absolute path (realpath isn't on macOS by
+# default) before opening any, so one bad argument opens nothing.
+paths=()
+for target in "$@"; do
+    if [ -d "$target" ]; then
+        echo "markee: $target is a directory; pass a Markdown file (use File ▸ Open Folder as Workspace… for folders)" >&2
+        exit 1
+    fi
+    if [ ! -e "$target" ]; then
+        echo "markee: file not found: $target" >&2
+        exit 1
+    fi
+    paths+=("$(cd "$(dirname "$target")" && pwd)/$(basename "$target")")
+done
 
 # Try by bundle id first (works even when the app is in a non-standard location),
 # fall back to opening by app name.
-if open -b "$APP_BUNDLE_ID" "$abs" 2>/dev/null; then
+if open -b "$APP_BUNDLE_ID" "${paths[@]}" 2>/dev/null; then
     exit 0
 fi
-exec open -a Markee "$abs"
+exec open -a Markee "${paths[@]}"

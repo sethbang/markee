@@ -19,6 +19,7 @@ private struct GeneralSettingsView: View {
     @ObservedObject private var store = SettingsStore.shared
     @State private var installedEditors: [String] = []
     @State private var editorText: String = ""
+    @State private var editorError: String?
 
     var body: some View {
         Form {
@@ -31,7 +32,17 @@ private struct GeneralSettingsView: View {
             }
             TextField("Other editor command:", text: $editorText, prompt: Text("e.g. code, zed"))
                 .textFieldStyle(.roundedBorder)
-                .onSubmit { store.editorOverride = editorText }
+                .onSubmit {
+                    let name = editorText.trimmingCharacters(in: .whitespaces)
+                    editorError = EditorLauncher.validationMessage(for: name)
+                    if editorError == nil { store.editorOverride = name }
+                }
+            if let editorError {
+                Text(editorError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             Divider().padding(.vertical, 4)
 

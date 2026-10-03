@@ -38,3 +38,11 @@ test("no wikiIndex (Quick Look) → everything broken, never an anchor", () => {
     assert.match(html, /markee-wikilink-broken/);
     assert.doesNotMatch(html, /<a /);
 });
+
+test("prototype keys never resolve ([[constructor]], [[__proto__]])", () => {
+    for (const name of ["constructor", "__proto__", "toString", "hasOwnProperty"]) {
+        const html = md().render(`[[${name}]]`, { wikiIndex: INDEX });
+        assert.match(html, /markee-wikilink-broken/, name);
+        assert.doesNotMatch(html, /<a |function/, name);
+    }
+});

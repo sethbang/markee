@@ -3,6 +3,7 @@ import AppKit
 
 enum EditorLaunchError: Error {
     case noEditorFound
+    case terminalEditor(String)
     case launchFailed(String)
 
     var message: String {
@@ -11,6 +12,8 @@ enum EditorLaunchError: Error {
             return "No supported editor found on $PATH. Tried: "
                 + EditorLauncher.candidates.joined(separator: ", ")
                 + ". Set one in Markee ▸ Settings ▸ General ▸ Editor."
+        case .terminalEditor(let name):
+            return EditorLauncher.terminalEditorMessage(name)
         case .launchFailed(let s):
             return "Couldn't launch editor: \(s)"
         }
@@ -18,11 +21,34 @@ enum EditorLaunchError: Error {
 }
 
 enum EditorLauncher {
-    /// Candidate CLI names tried in order. First one resolvable on the user's
-    /// PATH wins, unless `defaults read com.markee.preview editor` is set.
+    /// Candidate GUI-editor CLI names tried in order. First one resolvable on
+    /// the user's PATH wins, unless `defaults read com.markee.preview editor`
+    /// is set.
     static let candidates: [String] = [
-        "cursor", "code", "zed", "subl", "mate", "mvim", "hx"
+        "cursor", "code", "zed", "subl", "mate", "mvim"
     ]
+
+    /// Editors that need a terminal. Markee launches editors as plain child
+    /// processes with no TTY, so these would start invisibly and exit; they're
+    /// refused with an explanation instead.
+    static let terminalEditors: Set<String> = [
+        "hx", "helix", "nvim", "vim", "vi", "nano", "emacs", "micro", "kak", "kakoune"
+    ]
+
+    static func terminalEditorMessage(_ name: String) -> String {
+        "\(name) runs in a terminal, and Markee opens editors without one. "
+            + "Choose a GUI editor (e.g. code, zed, subl, mvim) in Markee ▸ Settings ▸ General."
+    }
+
+    /// Why `name` can't be used as the editor override, or nil if it can.
+    static func validationMessage(for name: String) -> String? {
+        if name.isEmpty { return nil }
+        if !isSafeEditorName(name) {
+            return "Enter a command name only (letters, digits, . _ + -), not a path or shell command."
+        }
+        if terminalEditors.contains(name) { return terminalEditorMessage(name) }
+        return nil
+    }
 
     // Serial queue that serializes all reads and writes of pathCache to prevent
     // data races when availableEditors() resolves binaries off the main thread
@@ -42,23 +68,22 @@ enum EditorLauncher {
         return name.allSatisfy { safeNameChars.contains($0) }
     }
 
-    /// Build the argv (excluding the binary) for opening `file` at `line` (0-indexed).
-    /// Each editor's line-jump convention is different; we key on the basename
-    /// of the binary so a path like `/opt/homebrew/bin/code` still dispatches.
+    /// Build the argv (excluding the binary) for opening `file` at `line`
+    /// (0-indexed). Each editor's line-jump convention differs; `editor` is the
+    /// command name (overrides are validated to bare names, never paths).
     static func buildArgs(editor: String, file: String, line: Int?) -> [String] {
         let displayLine = (line ?? -1) + 1 // editors are 1-indexed
         let useLine = line != nil && displayLine > 0
-        let key = (editor as NSString).lastPathComponent
-        switch key {
+        switch editor {
         case "code", "code-insiders", "cursor", "windsurf":
             return useLine ? ["-g", "\(file):\(displayLine):1"] : [file]
         case "zed":
             return useLine ? ["\(file):\(displayLine):1"] : [file]
-        case "subl", "hx":
+        case "subl":
             return useLine ? ["\(file):\(displayLine)"] : [file]
         case "mate":
             return useLine ? ["-l", "\(displayLine)", file] : [file]
-        case "mvim", "gvim", "nvim", "vim":
+        case "mvim", "gvim":
             return useLine ? ["+\(displayLine)", file] : [file]
         default:
             return [file]
@@ -94,7 +119,7 @@ enum EditorLauncher {
     /// Returns the editor the user prefers, in `(absolute-binary-path, name)` form,
     /// or nil if nothing on the candidate list resolves.
     static func preferredEditor() -> (bin: String, name: String)? {
-        if let override = UserDefaults.standard.string(forKey: "editor"), !override.isEmpty {
+        if let override = UserDefaults.standard.string(forKey: SettingsKey.editor), !override.isEmpty {
             if let bin = resolveBinary(override) {
                 return (bin, override)
             }
@@ -137,6 +162,10 @@ enum EditorLauncher {
     }
 
     private static func launch(file: URL, line: Int?) -> Result<Void, EditorLaunchError> {
+        if let override = UserDefaults.standard.string(forKey: SettingsKey.editor),
+           terminalEditors.contains(override) {
+            return .failure(.terminalEditor(override))
+        }
         guard let preferred = preferredEditor() else {
             return .failure(.noEditorFound)
         }

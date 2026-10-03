@@ -4,7 +4,7 @@ import WebKit
 /// Serves files from the app bundle's Resources/web/ directory.
 /// URLs look like: markee-app://app/template.html, markee-app://app/vendor/katex/katex.min.css
 public final class BundleSchemeHandler: NSObject, WKURLSchemeHandler {
-    public static let scheme = "markee-app"
+    nonisolated public static let scheme = "markee-app"
     private let webRoot: URL
 
     public override init() {
@@ -90,7 +90,7 @@ public final class BundleSchemeHandler: NSObject, WKURLSchemeHandler {
 /// is no workspace, so `docRoot` is the previewed file's own directory.
 /// URLs look like: markee-doc://doc/image.png  → <docRoot>/image.png
 public final class DocSchemeHandler: NSObject, WKURLSchemeHandler {
-    public static let scheme = "markee-doc"
+    nonisolated public static let scheme = "markee-doc"
     public private(set) var docRoot: URL
 
     public init(docRoot: URL) {

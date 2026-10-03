@@ -83,7 +83,7 @@ final class WorkspaceModel: ObservableObject {
         guard dir != rootPath else { return "\(scheme)://doc/" }
         if dir.hasPrefix(rootPath + "/") {
             let rel = String(dir.dropFirst(rootPath.count + 1))
-            return "\(scheme)://doc/\(rel)/"
+            return "\(scheme)://doc/\(encodePath(rel))/"
         }
         // Document outside root: unreachable via inference or Open Folder (which
         // rejects folders not containing the document); bare base as a fallback.
@@ -92,6 +92,17 @@ final class WorkspaceModel: ObservableObject {
 
     /// Drops the previous root's indexes immediately so nothing (wiki-links,
     /// search) resolves against them while the new walk runs.
+    /// Percent-encode each component of a root-relative path for a
+    /// `markee-doc://` URL, so `#`, `?` and `%` in names (`C# notes/`) don't
+    /// truncate or corrupt it.
+    nonisolated static func encodePath(_ relative: String) -> String {
+        var allowed = CharacterSet.urlPathAllowed
+        allowed.remove(charactersIn: "/;")
+        return relative.split(separator: "/", omittingEmptySubsequences: false)
+            .map { $0.addingPercentEncoding(withAllowedCharacters: allowed) ?? String($0) }
+            .joined(separator: "/")
+    }
+
     func setRoot(_ url: URL) {
         self.root = url.standardizedFileURL
         markdownFiles = []
@@ -168,16 +179,22 @@ final class WorkspaceModel: ObservableObject {
                 }
                 if files.count >= maxFiles { break }
                 guard isMarkdown(url) else { continue }
-                let std = url.standardizedFileURL
-                files.append(std)
-                guard std.path.hasPrefix(rootPath + "/") else { continue }
-                let rel = String(std.path.dropFirst(rootPath.count + 1))
-                let stem = std.deletingPathExtension().lastPathComponent.lowercased()
-                // First writer wins; same-stem ambiguity is rare in doc repos.
-                if index[stem] == nil { index[stem] = "\(DocSchemeHandler.scheme)://doc/\(rel)" }
+                files.append(url.standardizedFileURL)
             }
         }
         let sorted = files.sorted { $0.path < $1.path }
+        // Same-stem files (`docs/readme.md` vs `docs/api/readme.md`): the
+        // shallowest wins, ties broken by path — independent of walk order.
+        let byDepth = sorted.sorted {
+            let (a, b) = ($0.pathComponents.count, $1.pathComponents.count)
+            return a != b ? a < b : $0.path < $1.path
+        }
+        for file in byDepth where file.path.hasPrefix(rootPath + "/") {
+            let stem = file.deletingPathExtension().lastPathComponent.lowercased()
+            guard index[stem] == nil else { continue }
+            let rel = String(file.path.dropFirst(rootPath.count + 1))
+            index[stem] = "\(DocSchemeHandler.scheme)://doc/\(encodePath(rel))"
+        }
         return WorkspaceIndex(files: sorted, wikiIndex: index,
                               tree: buildTree(root: root, files: sorted))
     }

@@ -26,11 +26,13 @@ final class PreviewViewController: NSViewController, QLPreviewingController {
 
             do {
                 try await renderer.loadTemplate()
-                try await renderer.waitUntilReady()
+                // Bounded: a template that never posts `ready` (broken bundle,
+                // JS throw before setup) must fail over to the system preview.
+                try await withTimeout(seconds: 10) { try await renderer.waitUntilReady() }
                 let source = try readFileWithFallback(at: url)
-                await renderer.render(source: source,
-                                      fileName: url.lastPathComponent,
-                                      readOnly: true)
+                try await renderer.render(source: source,
+                                          fileName: url.lastPathComponent,
+                                          readOnly: true)
                 handler(nil)
             } catch {
                 handler(error)

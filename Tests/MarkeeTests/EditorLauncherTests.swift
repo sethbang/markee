@@ -8,7 +8,7 @@ final class EditorLauncherTests: XCTestCase {
             ["-g", "/x/y.md:42:1"]
         )
         XCTAssertEqual(
-            EditorLauncher.buildArgs(editor: "/opt/homebrew/bin/cursor", file: "/x.md", line: 0),
+            EditorLauncher.buildArgs(editor: "cursor", file: "/x.md", line: 0),
             ["-g", "/x.md:1:1"]
         )
         XCTAssertEqual(
@@ -24,15 +24,23 @@ final class EditorLauncherTests: XCTestCase {
         )
     }
 
-    func test_buildArgs_sublAndHelix_appendColonLine() {
+    func test_buildArgs_subl_appendsColonLine() {
         XCTAssertEqual(
             EditorLauncher.buildArgs(editor: "subl", file: "/x.md", line: 4),
             ["/x.md:5"]
         )
-        XCTAssertEqual(
-            EditorLauncher.buildArgs(editor: "hx", file: "/x.md", line: 4),
-            ["/x.md:5"]
-        )
+    }
+
+    /// Terminal editors would launch with no TTY: never auto-detected, and an
+    /// override naming one is refused with an explanation.
+    func test_terminalEditorsAreRefused() {
+        for name in ["hx", "nvim", "vim"] {
+            XCTAssertFalse(EditorLauncher.candidates.contains(name))
+            XCTAssertNotNil(EditorLauncher.validationMessage(for: name))
+        }
+        XCTAssertNil(EditorLauncher.validationMessage(for: "code"))
+        XCTAssertNil(EditorLauncher.validationMessage(for: ""))
+        XCTAssertNotNil(EditorLauncher.validationMessage(for: "/usr/local/bin/code"))
     }
 
     func test_buildArgs_textmate_usesDashLBeforePath() {
@@ -48,7 +56,7 @@ final class EditorLauncherTests: XCTestCase {
             ["+13", "/x.md"]
         )
         XCTAssertEqual(
-            EditorLauncher.buildArgs(editor: "nvim", file: "/x.md", line: nil),
+            EditorLauncher.buildArgs(editor: "gvim", file: "/x.md", line: nil),
             ["/x.md"]
         )
     }

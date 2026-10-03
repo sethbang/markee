@@ -23,6 +23,14 @@ struct MarkeeTitlebar: View {
     // filename stays visually centered in the window.
     private let leftGutter: CGFloat = 78
     private let rightGutter: CGFloat = 78
+    // Left cluster after the gutter: 6pt lead + sidebar toggle (24) + back and
+    // forward chevrons (22 each). Keep in sync with the frames below.
+    private let toggleLead: CGFloat = 6
+    private let toggleWidth: CGFloat = 24
+    private let chevronWidth: CGFloat = 22
+    /// Symmetric inset for the centered filename so it never draws under the
+    /// left cluster (gutter + toggle + chevrons) or, mirrored, the right side.
+    private var titleInset: CGFloat { leftGutter + toggleLead + toggleWidth + 2 * chevronWidth + 4 }
 
     var body: some View {
         ZStack {
@@ -33,7 +41,7 @@ struct MarkeeTitlebar: View {
                     .foregroundStyle(titlebarTextColor)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                    .padding(.horizontal, 110) // clears the sidebar toggle on the left
+                    .padding(.horizontal, titleInset)
             }
 
             // Left: spacer for traffic lights + sidebar toggle
@@ -44,20 +52,20 @@ struct MarkeeTitlebar: View {
                         Image(systemName: "sidebar.left")
                             .font(.system(size: 14, weight: .regular))
                             .foregroundStyle(toggleIconColor)
-                            .frame(width: 24, height: 24)
+                            .frame(width: toggleWidth, height: 24)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .help("Toggle outline")
                     .accessibilityLabel(isOutlineVisible ? "Hide outline" : "Show outline")
-                    .padding(.leading, 6)
+                    .padding(.leading, toggleLead)
                 }
                 if fileName != nil {
                     Button(action: onBack) {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 13, weight: .regular))
                             .foregroundStyle(canGoBack ? toggleIconColor : toggleIconColor.opacity(0.35))
-                            .frame(width: 22, height: 24)
+                            .frame(width: chevronWidth, height: 24)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain).disabled(!canGoBack).help("Back")
@@ -65,7 +73,7 @@ struct MarkeeTitlebar: View {
                         Image(systemName: "chevron.right")
                             .font(.system(size: 13, weight: .regular))
                             .foregroundStyle(canGoForward ? toggleIconColor : toggleIconColor.opacity(0.35))
-                            .frame(width: 22, height: 24)
+                            .frame(width: chevronWidth, height: 24)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain).disabled(!canGoForward).help("Forward")
