@@ -174,6 +174,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Updater.shared.checkOnLaunch()
+        EditorLauncher.warmCache()
         SupportController.shared.registerLaunch()
         UsageTracker.shared.recordActiveDay()
         // Resolve the bundled doc before consuming the trigger: consume stamps

@@ -62,7 +62,7 @@ final class ThumbnailProvider: QLThumbnailProvider {
                               defer: false)
         window.contentView = renderer.webView
 
-        renderer.loadTemplate()
+        try await renderer.loadTemplate()
         try await renderer.waitUntilReady()
 
         let source = try readFileWithFallback(at: fileURL)

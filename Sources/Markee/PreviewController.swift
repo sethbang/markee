@@ -104,7 +104,7 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
         self.webView.controller = self
         self.workspace.onIndexUpdated = { [weak self] in self?.reRenderForIndexIfNeeded() }
 
-        userContent.add(self, name: "markee")
+        userContent.add(WeakScriptMessageHandler(target: self), name: "markee")
         self.webView.navigationDelegate = self
         self.webView.allowsBackForwardNavigationGestures = false
 
@@ -208,11 +208,29 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
         panel.allowsMultipleSelection = false
         panel.prompt = "Set Workspace"
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        workspace.setRoot(url)
-        docHandler.setDocRoot(workspace.root)
+        guard setWorkspaceRoot(url) else {
+            errorBanner = "\(fileURL.lastPathComponent) isn't inside \(url.lastPathComponent) — choose a folder that contains it."
+            return
+        }
         sidebarMode = .files
         showOutline = true
-        loadFromDisk(reason: "open-folder")   // re-render with the new base/index
+    }
+
+    /// Re-root the workspace at `folder`, which must contain the open document
+    /// (its `<base href>` and the sandbox are both relative to the root).
+    /// Re-renders now with an empty wiki index, then again once the new index
+    /// lands, so links never resolve against the previous root.
+    @discardableResult
+    func setWorkspaceRoot(_ folder: URL) -> Bool {
+        let rootPath = folder.standardizedFileURL.path
+        guard fileURL.standardizedFileURL.path.hasPrefix(rootPath == "/" ? "/" : rootPath + "/") else {
+            return false
+        }
+        workspace.setRoot(folder)
+        docHandler.setDocRoot(workspace.root)
+        indexPopulated = false
+        loadFromDisk(reason: "open-folder")
+        return true
     }
 
     @objc private func handleSearchPalette() {
@@ -689,11 +707,8 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
     /// Launch the user's external editor at `line` (0-indexed) in the current file.
     /// Pass `nil` to open without a line target.
     func openInEditor(atLine line: Int?) {
-        switch EditorLauncher.open(file: fileURL, line: line) {
-        case .success:
-            break
-        case .failure(let err):
-            self.errorBanner = err.message
+        EditorLauncher.open(file: fileURL, line: line) { [weak self] result in
+            if case .failure(let err) = result { self?.errorBanner = err.message }
         }
     }
 
@@ -735,7 +750,12 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
     // MARK: - WKScriptMessageHandler
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard message.name == "markee", let body = message.body as? [String: Any] else { return }
+        // Only the template's own main frame may drive the bridge (task
+        // write-back, clipboard, navigation) — never an iframe or a foreign page.
+        guard message.name == "markee",
+              message.frameInfo.isMainFrame,
+              message.frameInfo.request.url.map(NavigationPolicy.isTemplate) == true,
+              let body = message.body as? [String: Any] else { return }
         let kind = body["kind"] as? String ?? ""
         switch kind {
         case "ready":
@@ -798,39 +818,26 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
         }
     }
 
-    /// Flip a single `[ ]`/`[x]` bracket on the given 0-indexed line in the file,
-    /// then write atomically. Bails silently if the line no longer looks like a
-    /// task-list item (file drifted between click and write) — the next render
-    /// reconciles.
+    /// Flip a single `[ ]`/`[x]` bracket on the given 0-indexed line in the file.
+    /// Re-reads the file first and bails if the line no longer looks like a task
+    /// item (it drifted between click and write) — the only protection against
+    /// clobbering a concurrent edit in another editor. Any bail re-renders from
+    /// disk so the checkbox the click already flipped snaps back to the truth.
     private func toggleTask(atLine line: Int, checked: Bool) {
+        // Write through symlinks: an atomic write to the link itself would
+        // replace it with a regular file and leave the real target unchanged.
+        let target = fileURL.resolvingSymlinksInPath()
         do {
-            let data = try Data(contentsOf: fileURL)
-            guard let text = String(data: data, encoding: .utf8) else {
-                self.errorBanner = "Cannot decode \(fileURL.lastPathComponent) as UTF-8"
+            let decoded = try readDecodedFile(at: target)
+            guard let newText = TaskToggle.toggledText(decoded.text, line: line, checked: checked),
+                  let data = decoded.encode(newText) else {
+                loadFromDisk(reason: "task-toggle-bail")
                 return
             }
-            var lines = text.components(separatedBy: "\n")
-            guard line >= 0, line < lines.count else { return }
-
-            let original = lines[line]
-            let hadCR = original.hasSuffix("\r")
-            let body = hadCR ? String(original.dropLast()) : original
-
-            let pattern = "^(\\s*(?:[-+*]|\\d+\\.)\\s+\\[)([ xX])(\\].*)$"
-            guard let regex = try? NSRegularExpression(pattern: pattern),
-                  let match = regex.firstMatch(in: body, range: NSRange(body.startIndex..., in: body))
-            else {
-                return
-            }
-            let nsBody = body as NSString
-            let prefix = nsBody.substring(with: match.range(at: 1))
-            let suffix = nsBody.substring(with: match.range(at: 3))
-            let mark = checked ? "x" : " "
-            lines[line] = prefix + mark + suffix + (hadCR ? "\r" : "")
-            let newText = lines.joined(separator: "\n")
-            try newText.write(to: fileURL, atomically: true, encoding: .utf8)
+            try data.write(to: target, options: .atomic)
             if checked { UsageTracker.shared.recordBoxChecked() }
         } catch {
+            loadFromDisk(reason: "task-toggle-failed")
             self.errorBanner = "Failed to toggle task: \(error.localizedDescription)"
         }
     }
@@ -839,37 +846,58 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard let url = navigationAction.request.url else {
-            decisionHandler(.allow); return
-        }
-        // Belt-and-suspenders: JS intercepts .md link clicks (in-window nav).
-        // If one ever slips through, cancel it — never let the doc scheme load a
-        // .md into the main frame (that replaces the template with raw markdown).
-        if navigationAction.navigationType == .linkActivated,
-           url.scheme == DocSchemeHandler.scheme,
-           ["md", "markdown"].contains(url.pathExtension.lowercased()) {
             decisionHandler(.cancel); return
         }
-        // Allow initial load of our template & our scheme handlers
-        if url.scheme == BundleSchemeHandler.scheme || url.scheme == DocSchemeHandler.scheme {
+        let decision = NavigationPolicy.decide(
+            url: url,
+            isMainFrame: navigationAction.targetFrame?.isMainFrame ?? true,
+            isLinkActivated: navigationAction.navigationType == .linkActivated)
+        switch decision {
+        case .allow:
             decisionHandler(.allow); return
+        case .cancel:
+            break
+        case .openExternally(let external):
+            NSWorkspace.shared.open(external)
+        case .openWorkspaceFile(let path):
+            openWorkspaceFile(path: path)
+        case .blockedScheme(let scheme):
+            self.errorBanner = "Blocked link with unsupported scheme: \(scheme)"
         }
-        // In-page anchor navigation
-        if url.scheme == "about" {
-            decisionHandler(.allow); return
+        decisionHandler(.cancel)
+    }
+
+    /// A clicked link to a non-Markdown file inside the workspace: open viewable
+    /// types in their default app, reveal anything else in Finder.
+    private func openWorkspaceFile(path: String) {
+        guard let target = resolveSandboxed(root: workspace.root, requestPath: path) else {
+            errorBanner = "Link points outside the workspace folder."
+            return
         }
-        if navigationAction.navigationType == .linkActivated {
-            // Allowlist only safe schemes. `javascript:`, `file://`, `vscode://`,
-            // and other custom schemes can leak data or trigger unintended
-            // actions in handler apps; cancel and ignore.
-            let allowed: Set<String> = ["http", "https", "mailto"]
-            if let scheme = url.scheme?.lowercased(), allowed.contains(scheme) {
-                NSWorkspace.shared.open(url)
-            } else {
-                self.errorBanner = "Blocked link with unsupported scheme: \(url.scheme ?? "?")"
-            }
-            decisionHandler(.cancel); return
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: target.path, isDirectory: &isDir) else {
+            errorBanner = "File not found: \(target.lastPathComponent)"
+            return
         }
-        decisionHandler(.allow)
+        if isDir.boolValue { return }
+        if NavigationPolicy.isSafeToOpen(target) {
+            NSWorkspace.shared.open(target)
+        } else {
+            NSWorkspace.shared.activateFileViewerSelecting([target])
+        }
+    }
+
+    /// The template is the only page the main frame may hold, so a commit of
+    /// anything else means the policy above was bypassed: restore the preview.
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        guard let url = webView.url, !NavigationPolicy.isTemplate(url) else { return }
+        reloadTemplateAndRerender()
+    }
+
+    private func reloadTemplateAndRerender() {
+        templateLoaded = false
+        pendingRender = lastGoodSource.isEmpty ? pendingRender : lastGoodSource
+        loadTemplate()
     }
 
     // MARK: - In-window navigation
@@ -883,6 +911,10 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
     private func handleNavigate(path: String, fragment: String, newWindow: Bool) {
         guard let target = resolveSandboxed(root: workspace.root, requestPath: path) else {
             errorBanner = "Link points outside the workspace folder."
+            return
+        }
+        guard ["md", "markdown"].contains(target.pathExtension.lowercased()) else {
+            openWorkspaceFile(path: path)
             return
         }
         guard FileManager.default.fileExists(atPath: target.path) else {

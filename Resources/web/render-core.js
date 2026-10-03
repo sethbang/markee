@@ -1,7 +1,7 @@
 // render-core.js — the markdown-it pipeline, shared by the in-browser renderer
 // (app.js) and Node snapshot tests. UMD: exposes window.markeeRenderCore in the
-// browser, module.exports in Node. Construction-only: heading ids, task-line
-// mapping, and DOM post-passes stay in app.js.
+// browser, module.exports in Node. Construction-only: heading ids and DOM
+// post-passes stay in app.js; source-line stamping happens here.
 
 (function (root, factory) {
     if (typeof module !== "undefined" && module.exports) {
@@ -21,18 +21,48 @@
             .replace(/'/g, "&#39;");
     }
 
-    // Strip a leading BOM and YAML front matter (`---\n…\n---\n`). Returns the
-    // body plus the number of newlines removed, so callers can keep source-line
-    // numbers accurate against the on-disk file.
+    // YAML front matter: an opening `---` line through a closing `---` or `...`
+    // line. CRLF-tolerant; the closer may end the file. The single definition
+    // shared by rendering, task/heading line numbers and reflow — they must
+    // agree on where the body starts or task write-back targets the wrong line.
+    const FRONT_MATTER = /^---[ \t]*\r?\n(?:[\s\S]*?\r?\n)?(?:---|\.\.\.)[ \t]*(?:\r?\n|$)/;
+
+    // Split `source` into a leading BOM, the verbatim front-matter block, and the
+    // body. `lineCount` is the number of source lines before the body, so body
+    // line N is source line N + lineCount.
+    function splitFrontMatter(source) {
+        let src = String(source == null ? "" : source);
+        const bom = src.charCodeAt(0) === 0xFEFF ? "\uFEFF" : "";
+        if (bom) src = src.slice(1);
+        const m = src.match(FRONT_MATTER);
+        const frontMatter = m ? m[0] : "";
+        return {
+            bom: bom,
+            frontMatter: frontMatter,
+            body: src.slice(frontMatter.length),
+            lineCount: (frontMatter.match(/\n/g) || []).length
+        };
+    }
+
     function stripFrontMatter(source) {
-        let src = String(source || "").replace(/^﻿/, "");
-        let lineCount = 0;
-        const m = src.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n/);
-        if (m) {
-            lineCount = (m[0].match(/\n/g) || []).length;
-            src = src.slice(m[0].length);
-        }
-        return { body: src, lineCount: lineCount };
+        const parts = splitFrontMatter(source);
+        return { body: parts.body, lineCount: parts.lineCount };
+    }
+
+    // Stamp `data-line` (0-based line in the ORIGINAL file: env.lineOffset is the
+    // front-matter line count) onto task items and headings, straight from the
+    // parser's token maps. Positional pairing of a hand-rolled line scan with the
+    // DOM drifted on blockquotes, fences in list items, HTML blocks and front
+    // matter, so a checkbox click could rewrite the wrong line.
+    function sourceLinePlugin(md) {
+        md.core.ruler.push("markee_source_lines", function (state) {
+            const offset = (state.env && state.env.lineOffset) || 0;
+            for (const t of state.tokens) {
+                if (!t.map) continue;
+                const isTask = t.type === "list_item_open" && /\btask-list-item\b/.test(t.attrGet("class") || "");
+                if (isTask || t.type === "heading_open") t.attrSet("data-line", String(t.map[0] + offset));
+            }
+        });
     }
 
     // Local slug for [[Note#Heading]] fragments. Mirrors util.js slugify's base
@@ -126,11 +156,19 @@
         };
         use(deps.footnote);
         use(deps.deflist);
-        use(deps.attrs);
+        // Allowlist: unrestricted, `{onmouseover="…"}` emits event-handler
+        // attributes — script injection independent of `html: true`.
+        use(deps.attrs, { allowedAttributes: ["id", "class", /^data-.*$/, "width", "height", "lang", "title", "dir"] });
         use(deps.taskLists, { enabled: true, label: true });
         m.use(wikiLinkPlugin);
+        m.use(sourceLinePlugin);
         return m;
     }
 
-    return { createRenderer: createRenderer, escapeHtml: escapeHtml, stripFrontMatter: stripFrontMatter };
+    return {
+        createRenderer: createRenderer,
+        escapeHtml: escapeHtml,
+        splitFrontMatter: splitFrontMatter,
+        stripFrontMatter: stripFrontMatter
+    };
 });

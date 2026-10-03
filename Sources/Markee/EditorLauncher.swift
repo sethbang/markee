@@ -119,7 +119,24 @@ enum EditorLauncher {
         }
     }
 
-    static func open(file: URL, line: Int?) -> Result<Void, EditorLaunchError> {
+    /// Resolve the editor and launch it, off the main thread: resolution can
+    /// shell out to an interactive login zsh (heavy `.zshrc`s take seconds).
+    /// `completion` runs on the main queue.
+    static func open(file: URL, line: Int?,
+                     completion: @escaping (Result<Void, EditorLaunchError>) -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = launch(file: file, line: line)
+            DispatchQueue.main.async { completion(result) }
+        }
+    }
+
+    /// Resolve every candidate in the background so the first Open in Editor
+    /// doesn't pay for the login-shell lookups.
+    static func warmCache() {
+        DispatchQueue.global(qos: .utility).async { _ = preferredEditor() }
+    }
+
+    private static func launch(file: URL, line: Int?) -> Result<Void, EditorLaunchError> {
         guard let preferred = preferredEditor() else {
             return .failure(.noEditorFound)
         }
@@ -148,17 +165,39 @@ enum EditorLauncher {
         return t
     }
 
-    private static func runCapturing(_ executable: String, _ args: [String]) -> String? {
+    /// Run a lookup command and return its stdout, or nil on failure. Never
+    /// hangs the caller: stdin is /dev/null (an interactive zsh can't block on
+    /// a prompt), stdout is drained while the process runs (a full 64 KB pipe
+    /// would otherwise deadlock it), and it's terminated after `timeout`.
+    static func runCapturing(_ executable: String, _ args: [String],
+                             timeout: TimeInterval = 5) -> String? {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: executable)
         p.arguments = args
+        p.standardInput = FileHandle.nullDevice
+        p.standardError = FileHandle.nullDevice
         let outPipe = Pipe()
         p.standardOutput = outPipe
-        p.standardError = Pipe()
+        let exited = DispatchSemaphore(value: 0)
+        p.terminationHandler = { _ in exited.signal() }
         do { try p.run() } catch { return nil }
-        p.waitUntilExit()
-        guard p.terminationStatus == 0 else { return nil }
-        let data = outPipe.fileHandleForReading.readDataToEndOfFile()
-        return String(data: data, encoding: .utf8)
+
+        let output = CapturedOutput()
+        let drained = DispatchSemaphore(value: 0)
+        DispatchQueue.global(qos: .utility).async {
+            output.data = outPipe.fileHandleForReading.readDataToEndOfFile()
+            drained.signal()
+        }
+        if exited.wait(timeout: .now() + timeout) == .timedOut {
+            p.terminate()
+            return nil
+        }
+        // A background job the shell spawned may keep stdout open; don't wait on it.
+        guard drained.wait(timeout: .now() + 1) == .success, p.terminationStatus == 0 else { return nil }
+        return String(data: output.data, encoding: .utf8)
     }
+}
+
+private final class CapturedOutput: @unchecked Sendable {
+    var data = Data()
 }

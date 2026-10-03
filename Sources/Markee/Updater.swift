@@ -1,4 +1,5 @@
 import Foundation
+import Security
 
 /// A dotted numeric version (e.g. "0.4.0"), tolerant of a leading "v" and of a
 /// pre-release/build suffix. Used only to compare the running app against the
@@ -90,7 +91,7 @@ enum UpdaterError: LocalizedError {
         case .unparseable:      return "Couldn't read the release information."
         case .downloadFailed:   return "The update download failed."
         case .subprocessFailed: return "Unpacking the update failed."
-        case .invalidBundle:    return "The downloaded update looked invalid."
+        case .invalidBundle:    return "The downloaded update isn't a validly signed copy of Markee."
         }
     }
 }
@@ -294,25 +295,64 @@ final class Updater {
         let work = FileManager.default.temporaryDirectory
             .appendingPathComponent("markee-update-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
-        let zipURL = work.appendingPathComponent("Markee.app.zip")
-        try FileManager.default.moveItem(at: tempZip, to: zipURL)
+        do {
+            let zipURL = work.appendingPathComponent("Markee.app.zip")
+            try FileManager.default.moveItem(at: tempZip, to: zipURL)
 
-        // `ditto` unzips reliably, preserving the bundle's symlinks/structure.
-        try runProcess("/usr/bin/ditto", ["-x", "-k", zipURL.path, work.path])
+            // `ditto` unzips reliably, preserving the bundle's symlinks/structure.
+            try runProcess("/usr/bin/ditto", ["-x", "-k", zipURL.path, work.path])
 
-        let bundle = work.appendingPathComponent("Markee.app")
+            let bundle = work.appendingPathComponent("Markee.app")
+            try validateStagedBundle(bundle, expectedVersion: release.version)
+            return bundle
+        } catch {
+            try? FileManager.default.removeItem(at: work)
+            throw error
+        }
+    }
+
+    /// Code requirement every update must satisfy: signed by Apple-issued
+    /// Developer ID Application certificate of Markee's team, with Markee's
+    /// bundle id. HTTPS alone only proves the bytes came from GitHub — this
+    /// proves they came from us, so a hijacked release can't ship a foreign app.
+    static let updateRequirement = """
+        anchor apple generic and identifier "com.markee.preview" \
+        and certificate 1[field.1.2.840.113635.100.6.2.6] exists \
+        and certificate leaf[field.1.2.840.113635.100.6.1.13] exists \
+        and certificate leaf[subject.OU] = "N8427TN2XH"
+        """
+
+    /// Validate a staged `Markee.app` before it may replace the running app:
+    /// executable present, bundle id and version as expected, and a strict
+    /// (all architectures, nested code) signature check against `requirement`.
+    nonisolated static func validateStagedBundle(
+        _ bundle: URL,
+        expectedVersion: AppVersion,
+        bundleID: String = "com.markee.preview",
+        requirement: String = updateRequirement
+    ) throws {
         let exec = bundle.appendingPathComponent("Contents/MacOS/Markee")
         guard FileManager.default.isExecutableFile(atPath: exec.path) else {
             throw UpdaterError.invalidBundle
         }
         let infoPlist = bundle.appendingPathComponent("Contents/Info.plist")
         guard let info = NSDictionary(contentsOf: infoPlist),
+              info["CFBundleIdentifier"] as? String == bundleID,
               let versionString = info["CFBundleShortVersionString"] as? String,
               let parsed = AppVersion(versionString),
-              parsed == release.version else {
+              parsed == expectedVersion else {
             throw UpdaterError.invalidBundle
         }
-        return bundle
+
+        var code: SecStaticCode?
+        var req: SecRequirement?
+        guard SecStaticCodeCreateWithPath(bundle as CFURL, [], &code) == errSecSuccess, let code,
+              SecRequirementCreateWithString(requirement as CFString, [], &req) == errSecSuccess, let req
+        else { throw UpdaterError.invalidBundle }
+        let flags = SecCSFlags(rawValue: kSecCSCheckAllArchitectures | kSecCSStrictValidate | kSecCSCheckNestedCode)
+        guard SecStaticCodeCheckValidityWithErrors(code, flags, req, nil) == errSecSuccess else {
+            throw UpdaterError.invalidBundle
+        }
     }
 
     // MARK: - Install

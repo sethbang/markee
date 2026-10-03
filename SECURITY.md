@@ -4,48 +4,59 @@
 
 Markee is a local Markdown viewer. It renders the source file you point it at,
 including any raw HTML embedded in the Markdown — `markdown-it` is configured
-with `html: true` so the source can contain `<script>`, `<iframe>`, etc.
-
-**Don't open `.md` files from sources you don't trust.** Treat opening a
-Markdown file with Markee the same way you'd treat opening an HTML file in a
-browser: the contents can execute code in Markee's WebView context.
+with `html: true` so documents can use `<details>`, `<kbd>`, `<img width>` and
+the like. Raw HTML is untrusted, so the preview page is locked down instead of
+the HTML being stripped.
 
 ## What a malicious `.md` can and can't do
 
-A script inside a rendered `.md` runs inside Markee's WKWebView. Markee loads no
-remote resources of its own, but the WebView is **not** network-sandboxed and the
-app itself is not sandboxed — so treat a rendered Markdown file as capable of
-running code, reading nearby files, and reaching the network. It talks to the
-host app through the `window.markee` bridge.
+The preview runs in a WKWebView whose page (`template.html`) carries a strict
+Content-Security-Policy:
 
-The boundary that matters is the **workspace root**, inferred from the file you
+- **No document script runs.** Scripts load only from the app bundle
+  (`markee-app://`); inline `<script>`, `on*=` event handlers, `javascript:`
+  URLs and `.js` files inside the workspace are all refused. The
+  `markdown-it-attrs` `{…}` syntax is limited to an allowlist (`id`, `class`,
+  `data-*`, `width`, `height`, `lang`, `title`, `dir`), so it can't add
+  event handlers either.
+- **No frames, plugins or forms** (`frame-src`/`object-src`/`form-action`
+  `'none'`), and `fetch`/XHR may only reach the bundle and the workspace.
+- **Remote content is limited to `https:` images and media** in the app — so a
+  document *can* act as a tracking pixel and reveal your IP when opened. Quick
+  Look (Finder previews and thumbnails) additionally blocks every remote load
+  with a content-blocking rule list, since it renders files with no user action.
+
+The native bridge (`webkit.messageHandlers.markee`) only accepts messages from
+the template's own main frame. Its messages are `ready`, `outline`,
+`scrollSection`, `docStats`, `findResult` and `error` (UI state), `copyText`
+(writes the clipboard; used by code-block copy buttons and heading links),
+`taskToggle` (rewrites one `[ ]`/`[x]` checkbox in the open file) and
+`navigate` (opens another Markdown file inside the workspace). Because document
+script can't run, a document can only trigger these through Markee's own UI —
+i.e. by you clicking a checkbox, copy button or link.
+
+The main frame never leaves `template.html`: every document change is an
+in-place re-render, and the navigation policy cancels any other main-frame
+load. Clicked links are handed off — `http`/`https`/`mailto` to your browser,
+non-Markdown workspace files (images, PDFs, plain text) to their default app,
+anything else (scripts, `.command`, app bundles) revealed in Finder rather than
+opened. Other schemes are blocked.
+
+The serving boundary is the **workspace root**, inferred from the file you
 open: the enclosing git repository if there is one, otherwise the nearest parent
 folder holding more than one Markdown file, otherwise the file's own folder.
-*File ▸ Open Folder as Workspace…* sets it explicitly. Opening a file deep inside
-a git repository therefore exposes the **whole repository** to the renderer.
+Inference never climbs to your home folder, anything above it, or `/` — a
+dotfiles repo at `~` doesn't make your whole home folder the workspace — and a
+root that *is* one of those (a file saved directly in `~`) is indexed one level
+deep only.
+*File ▸ Open Folder as Workspace…* sets it explicitly. Images and links can
+reference any file under that root via `markee-doc://doc/...`; nothing outside
+it is served (path traversal, percent-encoded `..` and symlink escapes are
+blocked).
 
-It **can**:
-- Call `webkit.messageHandlers.markee.postMessage({...})` to send `taskToggle`
-  (writes a checkbox back to disk on the line you specify), `error` (shows a
-  banner), or `outline` (replaces the sidebar contents).
-- Read any file **inside the workspace root** — which may be an entire git
-  repository, including sibling documents open under the same root — via
-  `markee-doc://doc/...`.
-- Make outbound network requests (e.g. `fetch`, a beacon, an `<img>`). Markee
-  applies no Content-Security-Policy or content-blocking rules, so a malicious
-  script could exfiltrate file contents it has read. (Top-level link clicks are
-  separate: only `http`/`https`/`mailto` links are handed off to your browser;
-  other schemes are blocked.)
-
-It **cannot**:
-- Read files **outside the workspace root** (the `markee-doc://` handler is
-  sandboxed to that root; symlink escapes and path traversal are blocked).
-- Replace the rendered view by navigating the main frame to another document
-  (`.md` links are intercepted for in-window navigation; the scheme handler
-  refuses to load Markdown into the main frame).
-- Persist anything beyond the workspace files it can already write via the
-  task-checkbox toggle — no arbitrary disk writes, no preferences.
-- Escape the WebView process sandbox itself.
+The remaining write path is the task checkbox: clicking one rewrites that
+single line of the open file, after re-reading it and confirming the line is
+still a task item.
 
 ## Reporting a vulnerability
 

@@ -102,3 +102,13 @@ test("returns non-string input safely", () => {
     assert.equal(r(null), "");
     assert.equal(r(undefined), "");
 });
+
+test("keeps a leading BOM as the real U+FEFF character", () => {
+    const out = r("﻿first\nsecond\n");
+    assert.equal(out, "﻿first second\n");
+    assert.ok(!out.includes("\\uFEFF"));
+});
+
+test("front matter with a ... closer is kept verbatim", () => {
+    assert.equal(r("---\na: 1\n...\nwrapped\nline\n"), "---\na: 1\n...\nwrapped line\n");
+});

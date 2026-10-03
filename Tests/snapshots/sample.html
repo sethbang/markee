@@ -1,11 +1,11 @@
-<h1>Markee Sample</h1>
+<h1 data-line="1">Markee Sample</h1>
 <p>A quick fixture covering the v1 feature set.</p>
-<h2>Text formatting</h2>
+<h2 data-line="5">Text formatting</h2>
 <p>Plain <strong>bold</strong>, <em>italic</em>, <s>strikethrough</s>, <code>inline code</code>, and a <a href="https://example.com">link</a>.</p>
 <blockquote>
 <p>A blockquote. Useful for asides.</p>
 </blockquote>
-<h2>Lists</h2>
+<h2 data-line="11">Lists</h2>
 <ul>
 <li>Bullet one</li>
 <li>Bullet two
@@ -18,13 +18,13 @@
 <li>Ordered</li>
 <li>Ordered</li>
 </ol>
-<h2>Task list</h2>
+<h2 data-line="20">Task list</h2>
 <ul class="contains-task-list">
-<li class="task-list-item enabled"><label><input class="task-list-item-checkbox" checked=""type="checkbox"> Watch file</label></li>
-<li class="task-list-item enabled"><label><input class="task-list-item-checkbox" checked=""type="checkbox"> Re-render on save</label></li>
-<li class="task-list-item enabled"><label><input class="task-list-item-checkbox"type="checkbox"> Notarize for distribution</label></li>
+<li class="task-list-item enabled" data-line="22"><label><input class="task-list-item-checkbox" checked=""type="checkbox"> Watch file</label></li>
+<li class="task-list-item enabled" data-line="23"><label><input class="task-list-item-checkbox" checked=""type="checkbox"> Re-render on save</label></li>
+<li class="task-list-item enabled" data-line="24"><label><input class="task-list-item-checkbox"type="checkbox"> Notarize for distribution</label></li>
 </ul>
-<h2>Table</h2>
+<h2 data-line="26">Table</h2>
 <table>
 <thead>
 <tr>
@@ -51,33 +51,33 @@
 </tr>
 </tbody>
 </table>
-<h2>Code</h2>
+<h2 data-line="35">Code</h2>
 <pre class="hljs"><code>def hello(name: str) -&gt; str:
     return f&quot;Hello, {name}!&quot;
 </code></pre>
-<h2>Math</h2>
+<h2 data-line="42">Math</h2>
 <p>Inline: $a^2 + b^2 = c^2$.</p>
 <p>Display:</p>
 <p>$$
 \int_0^\infty e^{-x^2},dx = \frac{\sqrt{\pi}}{2}
 $$</p>
-<h2>Mermaid</h2>
+<h2 data-line="52">Mermaid</h2>
 <pre class="mermaid">graph LR
     A[Edit .md] --&gt;|save| B(FSEvents)
     B --&gt; C{Markee}
     C --&gt; D[Re-render]
     D --&gt; A
 </pre>
-<h2>Footnote</h2>
+<h2 data-line="62">Footnote</h2>
 <p>Here is a claim that needs a citation.<sup class="footnote-ref"><a href="#fn1" id="fnref1">[1]</a></sup></p>
-<h2>Definition list</h2>
+<h2 data-line="68">Definition list</h2>
 <dl>
 <dt>Markdown</dt>
 <dd>A lightweight markup language.</dd>
 <dt>WKWebView</dt>
 <dd>Apple’s modern WebView, used here for rendering.</dd>
 </dl>
-<h2>Cross-document links</h2>
+<h2 data-line="76">Cross-document links</h2>
 <p>A wiki link to <span class="markee-wikilink-broken" title="Unresolved link: sample">sample</span> and an unresolved one to <span class="markee-wikilink-broken" title="Unresolved link: Nonexistent Note">Nonexistent Note</span>.
 A relative link to <a href="./other.md">another doc</a>.</p>
 <hr class="footnotes-sep">

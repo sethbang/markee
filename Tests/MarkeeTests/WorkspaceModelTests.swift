@@ -70,3 +70,79 @@ final class WorkspaceModelTests: XCTestCase {
         XCTAssertTrue(r.tree.first?.isDirectory ?? false)
     }
 }
+
+final class WorkspaceRootBoundTests: XCTestCase {
+    private var tmp: URL!
+    private var home: URL!
+
+    override func setUpWithError() throws {
+        tmp = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("wsb-" + UUID().uuidString).standardizedFileURL
+        home = tmp.appendingPathComponent("home")
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+    }
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: tmp)
+    }
+    private func touch(_ url: URL) throws {
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data().write(to: url)
+    }
+
+    /// A dotfiles repo at ~ must not make the whole home tree the workspace.
+    func test_homeGitRepoIsNeverTheRoot() throws {
+        try FileManager.default.createDirectory(at: home.appendingPathComponent(".git"), withIntermediateDirectories: true)
+        let doc = home.appendingPathComponent("Downloads/x/readme.md")
+        try touch(doc)
+        XCTAssertEqual(WorkspaceModel.inferRoot(for: doc, home: home).path,
+                       home.appendingPathComponent("Downloads/x").path)
+    }
+
+    func test_homeWithSeveralNotesIsNeverTheRoot() throws {
+        try touch(home.appendingPathComponent("a.md"))
+        try touch(home.appendingPathComponent("b.md"))
+        let doc = home.appendingPathComponent("sub/only.md")
+        try touch(doc)
+        XCTAssertEqual(WorkspaceModel.inferRoot(for: doc, home: home).path,
+                       home.appendingPathComponent("sub").path)
+    }
+
+    func test_fileDirectlyInHomeFallsBackToHomeItself() throws {
+        let doc = home.appendingPathComponent("note.md")
+        try touch(doc)
+        XCTAssertEqual(WorkspaceModel.inferRoot(for: doc, home: home).path, home.path)
+    }
+
+    func test_repoInsideHomeIsStillFound() throws {
+        let repo = home.appendingPathComponent("Code/proj")
+        try FileManager.default.createDirectory(at: repo.appendingPathComponent(".git"), withIntermediateDirectories: true)
+        let doc = repo.appendingPathComponent("docs/guide.md")
+        try touch(doc)
+        XCTAssertEqual(WorkspaceModel.inferRoot(for: doc, home: home).path, repo.path)
+    }
+
+    func test_forbiddenRootIsEnumeratedShallowly() throws {
+        try touch(home.appendingPathComponent("top.md"))
+        try touch(home.appendingPathComponent("Documents/deep.md"))
+        let r = WorkspaceModel.enumerate(root: home, home: home)
+        XCTAssertEqual(r.files.map(\.lastPathComponent), ["top.md"])
+    }
+
+    func test_forbiddenRoots() {
+        XCTAssertTrue(WorkspaceModel.isForbiddenRoot("/", homePath: "/Users/me"))
+        XCTAssertTrue(WorkspaceModel.isForbiddenRoot("/Users", homePath: "/Users/me"))
+        XCTAssertTrue(WorkspaceModel.isForbiddenRoot("/Users/me", homePath: "/Users/me"))
+        XCTAssertFalse(WorkspaceModel.isForbiddenRoot("/Users/me/Code", homePath: "/Users/me"))
+        XCTAssertFalse(WorkspaceModel.isForbiddenRoot("/Users/mex", homePath: "/Users/me"))
+        XCTAssertFalse(WorkspaceModel.isForbiddenRoot("/Volumes/Docs", homePath: "/Users/me"))
+    }
+
+    func test_enumerateHonorsFileCapAndSkipSet() throws {
+        for i in 0..<5 { try touch(tmp.appendingPathComponent("w/n\(i).md")) }
+        try touch(tmp.appendingPathComponent("w/Pods/x/readme.md"))
+        try touch(tmp.appendingPathComponent("w/target/doc.md"))
+        let root = tmp.appendingPathComponent("w")
+        XCTAssertEqual(WorkspaceModel.enumerate(root: root).files.count, 5)
+        XCTAssertEqual(WorkspaceModel.enumerate(root: root, maxFiles: 3).files.count, 3)
+    }
+}

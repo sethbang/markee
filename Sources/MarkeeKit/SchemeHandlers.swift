@@ -13,6 +13,12 @@ public final class BundleSchemeHandler: NSObject, WKURLSchemeHandler {
         super.init()
     }
 
+    /// Serve from an explicit directory (tests point this at `Resources/web`).
+    public init(webRoot: URL) {
+        self.webRoot = webRoot
+        super.init()
+    }
+
     public func webView(_ webView: WKWebView, start urlSchemeTask: WKURLSchemeTask) {
         guard let url = urlSchemeTask.request.url else {
             urlSchemeTask.didFailWithError(URLError(.badURL)); return

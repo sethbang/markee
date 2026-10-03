@@ -1,6 +1,7 @@
 // reflow.js — collapse soft-wrapped newlines *inside* paragraph blocks to single
-// spaces, leaving every non-paragraph line (headings, code, tables, list
-// structure, blank lines, front matter) byte-for-byte intact. UMD:
+// spaces, leaving the content of every non-paragraph line (headings, code,
+// tables, list structure, blank lines) unchanged. A BOM and the front-matter
+// block are kept verbatim; body line endings are normalized to LF. UMD:
 // window.markeeReflow in the browser, module.exports in Node (Tests/reflow.test.js).
 //
 // reflow(source, md): `md` is a configured markdown-it instance (the same one the
@@ -9,14 +10,13 @@
 
 (function (root, factory) {
     if (typeof module !== "undefined" && module.exports) {
-        module.exports = factory();
+        module.exports = factory(require("./render-core.js"));
     } else {
-        root.markeeReflow = factory();
+        root.markeeReflow = factory(root.markeeRenderCore);
     }
-})(typeof self !== "undefined" ? self : (typeof globalThis !== "undefined" ? globalThis : this), function () {
+})(typeof self !== "undefined" ? self : (typeof globalThis !== "undefined" ? globalThis : this), function (core) {
     "use strict";
 
-    const FRONT_MATTER = /^---\r?\n[\s\S]*?\r?\n---\r?\n/;
     // An explicit hard break (two+ trailing spaces or trailing backslash before a
     // newline) is author-intended; such a paragraph is left verbatim.
     const HARD_BREAK = /( {2,}\n)|(\\\n)/;
@@ -33,12 +33,7 @@
         const src = String(source == null ? "" : source);
         if (!md || typeof md.parse !== "function") return src;
 
-        const bom = src.charCodeAt(0) === 0xFEFF ? "\\uFEFF" : "";
-        let rest = bom ? src.slice(1) : src;
-
-        let frontMatter = "";
-        const fm = rest.match(FRONT_MATTER);
-        if (fm) { frontMatter = fm[0]; rest = rest.slice(fm[0].length); }
+        const { bom, frontMatter, body: rest } = core.splitFrontMatter(src);
 
         const lines = rest.split(/\r\n|\r|\n/);
         let tokens;

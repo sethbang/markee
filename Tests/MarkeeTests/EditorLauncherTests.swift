@@ -100,4 +100,21 @@ final class EditorLauncherTests: XCTestCase {
         XCTAssertNil(EditorLauncher.resolveBinary("x; echo pwned"))
         XCTAssertNil(EditorLauncher.resolveBinary("$(uname)"))
     }
+
+    // MARK: - runCapturing never hangs the caller
+
+    func test_runCapturing_timesOutAndTerminates() {
+        let start = Date()
+        XCTAssertNil(EditorLauncher.runCapturing("/bin/sleep", ["5"], timeout: 0.3))
+        XCTAssertLessThan(Date().timeIntervalSince(start), 2)
+    }
+
+    func test_runCapturing_drainsOutputLargerThanThePipeBuffer() {
+        let out = EditorLauncher.runCapturing("/bin/sh", ["-c", "yes | head -c 200000"])
+        XCTAssertEqual(out?.count, 200_000)
+    }
+
+    func test_runCapturing_stdinIsNullSoReadersSeeEOF() {
+        XCTAssertEqual(EditorLauncher.runCapturing("/bin/cat", [], timeout: 2), "")
+    }
 }

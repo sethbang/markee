@@ -24,14 +24,25 @@ final class WorkspaceModel: ObservableObject {
 
     /// Walk up: git root (nearest ancestor with `.git`) → nearest ancestor
     /// containing more than one `.md` → the file's own directory.
+    ///
+    /// The walk never reaches the home folder, any ancestor of it, or `/`: the
+    /// root is the `markee-doc://` serving boundary and the enumeration scope,
+    /// so a dotfiles `~/.git` (or a few notes in `~`) must not widen it to the
+    /// whole home tree. Those cases fall back to the file's own directory.
     /// `nonisolated` (pure, no main-actor state) so tests and `init` can call it.
-    nonisolated static func inferRoot(for file: URL) -> URL {
+    nonisolated static func inferRoot(
+        for file: URL,
+        home: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> URL {
         let start = file.deletingLastPathComponent().standardizedFileURL
         let fm = FileManager.default
+        let homePath = home.standardizedFileURL.path
 
+        // Candidate roots, nearest first, stopping before a forbidden one.
+        var candidates: [URL] = []
         var dir = start
-        while true {
-            if fm.fileExists(atPath: dir.appendingPathComponent(".git").path) { return dir }
+        while !isForbiddenRoot(dir.path, homePath: homePath) {
+            candidates.append(dir)
             // Standardize so the filesystem root terminates the walk: Foundation's
             // URL("/").deletingLastPathComponent() yields "/..", which the bare
             // path-equality guard never catches — standardizing collapses it to "/".
@@ -40,17 +51,18 @@ final class WorkspaceModel: ObservableObject {
             dir = parent
         }
 
-        dir = start
-        while true {
-            if markdownCount(in: dir, fm: fm) > 1 { return dir }
-            // Standardize so the filesystem root terminates the walk: Foundation's
-            // URL("/").deletingLastPathComponent() yields "/..", which the bare
-            // path-equality guard never catches — standardizing collapses it to "/".
-            let parent = dir.deletingLastPathComponent().standardizedFileURL
-            if parent.path == dir.path { break }
-            dir = parent
+        if let git = candidates.first(where: { fm.fileExists(atPath: $0.appendingPathComponent(".git").path) }) {
+            return git
+        }
+        if let docs = candidates.first(where: { markdownCount(in: $0, fm: fm) > 1 }) {
+            return docs
         }
         return start
+    }
+
+    /// `/`, the home folder, and every ancestor of home are never inferred.
+    nonisolated static func isForbiddenRoot(_ path: String, homePath: String) -> Bool {
+        path == "/" || path == homePath || homePath.hasPrefix(path.hasSuffix("/") ? path : path + "/")
     }
 
     nonisolated private static func markdownCount(in dir: URL, fm: FileManager) -> Int {
@@ -73,12 +85,18 @@ final class WorkspaceModel: ObservableObject {
             let rel = String(dir.dropFirst(rootPath.count + 1))
             return "\(scheme)://doc/\(rel)/"
         }
-        // Document outside root (shouldn't happen — root is an ancestor): bare.
+        // Document outside root: unreachable via inference or Open Folder (which
+        // rejects folders not containing the document); bare base as a fallback.
         return "\(scheme)://doc/"
     }
 
+    /// Drops the previous root's indexes immediately so nothing (wiki-links,
+    /// search) resolves against them while the new walk runs.
     func setRoot(_ url: URL) {
         self.root = url.standardizedFileURL
+        markdownFiles = []
+        wikiIndex = [:]
+        fileTree = []
         rebuild()
     }
 
@@ -86,26 +104,56 @@ final class WorkspaceModel: ObservableObject {
     /// repeatedly (Files tab shown, palette opened, Open Folder). A result whose
     /// root no longer matches is dropped.
     func rebuild() {
+        // Coalesce: while a walk is in flight, just note that another is wanted.
+        guard !rebuildInFlight else { rebuildPending = true; return }
+        rebuildInFlight = true
         let root = self.root
         enumerationQueue.async { [weak self] in
             let r = WorkspaceModel.enumerate(root: root)
             DispatchQueue.main.async {
-                guard let self, self.root.standardizedFileURL == root.standardizedFileURL else { return }
-                self.markdownFiles = r.files
-                self.wikiIndex = r.wikiIndex
-                self.fileTree = r.tree
-                self.onIndexUpdated?()
+                guard let self else { return }
+                self.rebuildInFlight = false
+                if self.root.standardizedFileURL == root.standardizedFileURL {
+                    self.markdownFiles = r.files
+                    self.wikiIndex = r.wikiIndex
+                    self.fileTree = r.tree
+                    self.onIndexUpdated?()
+                }
+                if self.rebuildPending {
+                    self.rebuildPending = false
+                    self.rebuild()
+                }
             }
         }
     }
+    private var rebuildInFlight = false
+    private var rebuildPending = false
 
-    /// Pure walk: every `.md` under `root` (heavy build dirs skipped), the
-    /// `stem → markee-doc:// url` index, and the file tree. `nonisolated` so it
-    /// runs on the enumeration queue and is unit-testable.
-    nonisolated static func enumerate(root: URL) -> WorkspaceIndex {
+    /// Dependency/build directories that hold no docs worth indexing. (Hidden
+    /// directories — `.git`, `.venv`, … — are already skipped.)
+    nonisolated static let skippedDirectories: Set<String> = [
+        "node_modules", "bower_components", ".build", "build", "dist", "DerivedData", ".next",
+        "Pods", "Carthage", "target", "vendor", "venv", "__pycache__", "site-packages",
+    ]
+    /// Bounds on one walk, so an unexpectedly large root can't stall the index.
+    nonisolated static let maxDepth = 12
+    nonisolated static let maxFiles = 5000
+
+    /// Pure walk: every `.md` under `root` (heavy build dirs skipped, bounded by
+    /// `maxDepth`/`maxFiles`), the `stem → markee-doc:// url` index, and the
+    /// file tree. `nonisolated` so it runs on the enumeration queue and is
+    /// unit-testable.
+    ///
+    /// A forbidden root (home, its ancestors, `/` — reachable only for a file
+    /// sitting directly in one of them) is walked one level deep, never recursively.
+    nonisolated static func enumerate(
+        root: URL,
+        maxFiles: Int = maxFiles,
+        home: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> WorkspaceIndex {
         let fm = FileManager.default
         let rootPath = root.standardizedFileURL.path
-        let skip: Set<String> = ["node_modules", ".build", "build", "dist", "DerivedData", ".next", ".git"]
+        let depthLimit = isForbiddenRoot(rootPath, homePath: home.standardizedFileURL.path) ? 1 : maxDepth
         var files: [URL] = []
         var index: [String: String] = [:]
         if let en = fm.enumerator(at: root, includingPropertiesForKeys: [.isDirectoryKey],
@@ -113,9 +161,12 @@ final class WorkspaceModel: ObservableObject {
             for case let url as URL in en {
                 let isDir = (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
                 if isDir {
-                    if skip.contains(url.lastPathComponent) { en.skipDescendants() }
+                    if skippedDirectories.contains(url.lastPathComponent) || en.level >= depthLimit {
+                        en.skipDescendants()
+                    }
                     continue
                 }
+                if files.count >= maxFiles { break }
                 guard isMarkdown(url) else { continue }
                 let std = url.standardizedFileURL
                 files.append(std)

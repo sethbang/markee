@@ -80,6 +80,8 @@ two Quick Look extensions under `Contents/PlugIns/`.
   - `MarkeeTitlebar.swift` / `WindowAccessor.swift` — the custom titlebar view
     (centered filename, sidebar toggle, back/forward chevrons, support heart,
     word-count pill) and the `NSWindow` accessor that flips the titlebar flags.
+  - `NavigationPolicy.swift` — pure main-frame/link navigation decisions
+    (template-only main frame, link hand-off, safe-to-open file types).
   - `MarkeeWebView.swift` — `WKWebView` subclass extending the native
     right-click menu (Copy Markdown Source, Reveal in Finder).
   - `Updater.swift` — in-app updater (checks GitHub Releases, downloads,
@@ -97,10 +99,11 @@ two Quick Look extensions under `Contents/PlugIns/`.
     `setZoom`, `applySettings`, `find`/`clearFind`, `toast`, plus the
     task-toggle and in-window `.md`-link navigation handlers. Exposes
     `window.markee`.
-  - `util.js` — pure helpers (`collectTaskLineNumbers`, `slugify`), UMD so Node
-    can require them for tests
+  - `util.js` — pure helpers (`slugify`, `pickActiveHeading`, find/selection
+    and currency-mask helpers), UMD so Node can require them for tests
   - `render-core.js` — markdown-it pipeline construction (`createRenderer`,
-    `stripFrontMatter`, `escapeHtml`); UMD so Node snapshot tests can require it
+    `splitFrontMatter`/`stripFrontMatter`, `escapeHtml`, the source-line
+    `data-line` stamping); UMD so Node snapshot tests can require it
   - `theme.css` — built-in light/dark theme
   - `vendor/` — fetched libs; **gitignored**
 - `Resources/Info.plist`, `Resources/QuickLookPreview-Info.plist`,
@@ -126,15 +129,40 @@ two Quick Look extensions under `Contents/PlugIns/`.
 - Swift loads `markee-app://app/template.html` into the WebView at window open.
 - After `app.js` finishes setup, it posts `{kind: "ready"}` via `webkit.messageHandlers.markee` → Swift flips `templateLoaded` and flushes any queued `render`.
 - Every file change: Swift reads the file, serializes `{source, fileName, docBase, wikiIndex, readOnly}` to JSON (plus `navigated` and `scrollTo` on cross-file navigation), calls `evaluateJavaScript("window.markee.render(<json>);")`.
-- JS replies with `{kind: "outline", items}` for the sidebar, `{kind: "error", message}` for renderer exceptions, `{kind: "taskToggle", line, checked}` for clicked checkboxes.
+- JS posts back `ready`, `outline` (sidebar items), `scrollSection` (active heading), `docStats` (word-count pill), `findResult`, `error` (banner), `copyText` (writes the pasteboard), `taskToggle` (checkbox write-back) and `navigate` (in-window/new-window `.md` navigation). The full list lives at the top of `app.js`.
 - Relative URLs in markdown (e.g. `![](pic.png)`) resolve via a `<base href>` that `app.js` injects per render from the payload's `docBase` (`markee-doc://doc/<docDir-relative-to-workspace-root>/`, from `WorkspaceModel.docBase`). Swift's `DocSchemeHandler` is rooted at the workspace root and serves any file beneath it, with path traversal above the root blocked by `resolveSandboxed`.
 
 ## Non-obvious invariants (don't break these)
 
+- **Rendered Markdown is untrusted; `template.html`'s CSP is the boundary.**
+  `script-src markee-app:` only — never add `'unsafe-inline'`/`'unsafe-eval'`
+  or `markee-doc:` to it (that re-enables `onerror=` handlers and workspace
+  `.js`). `markdown-it-attrs` runs with an `allowedAttributes` allowlist; an
+  unrestricted attrs plugin emits `on*` attributes regardless of `html: true`.
+  `WebRendererTests.test_templateCSPBlocksDocumentScriptButRenders` covers both.
+- **The main frame only ever holds `template.html`** (`NavigationPolicy`). Any
+  other main-frame load would replace the preview and inherit the bridge.
+  `#fragment` links resolve against `<base href>` (the doc's directory), so
+  `app.js` scrolls them in place instead of letting them navigate.
+- **The `markee` bridge only accepts the template's main frame**
+  (`frameInfo.isMainFrame` + template request URL), and is registered through
+  `WeakScriptMessageHandler` — registering the controller directly is a retain
+  cycle that leaks every closed window.
+- **Quick Look blocks all remote loads** with a `WKContentRuleList`
+  (`WebRenderer.loadTemplate`, fails closed). Content-blocker regexes have no
+  `|` alternation — one rule per scheme.
 - **FileWatcher.attach() must not call cancelInternal().** It would clobber the `changeDebounce` that `scheduleReattach()` schedules right before invoking `attach()`. Use `releaseSource()` (just the dispatch source). Caught by `test_atomicRenameFiresCallbackAfterReattach`.
-- **`collectTaskLineNumbers` runs on the original source**, front matter and all, because Swift writes back to the file by absolute line index. Don't pass it the post-front-matter-stripped string.
-- **Swift's `toggleTask` re-reads the file before writing** and bails if the target line no longer matches the `[ ]/[x]` regex. This is the only protection against clobbering concurrent edits in another editor. Keep it.
-- **Line endings are preserved** in `toggleTask` by splitting on `"\n"`, leaving trailing `\r` inside each line, and joining on `"\n"`. Don't "normalize" them.
+- **Task and heading source lines come from markdown-it's token maps**, stamped
+  as `data-line` by `sourceLinePlugin` in `render-core.js` with
+  `env.lineOffset` = the front-matter line count, so they index the ORIGINAL
+  file. Never pair a separate line scan with the DOM by position — that drifted
+  on blockquotes, fences in list items, HTML blocks and CRLF front matter and
+  rewrote the wrong line. `splitFrontMatter` is the one front-matter definition
+  (render, lines, reflow); `Tests/render.test.js` checks every stamped task line
+  against the Swift regex.
+- **Swift's `toggleTask` re-reads the file before writing** and bails if the target line no longer matches `TaskToggle`'s regex (which must accept every marker render-core stamps: bullets, `1.`/`1)`, `>` prefixes). This is the only protection against clobbering concurrent edits in another editor. Keep it. Every bail re-renders from disk so the clicked checkbox snaps back.
+- **`toggleTask` writes back byte-compatibly**: through symlinks (to the resolved target), in the encoding and BOM `readDecodedFile` detected.
+- **Line endings are preserved** in `TaskToggle` by splitting on `"\n"`, leaving trailing `\r` inside each line, and joining on `"\n"`. Don't "normalize" them.
 - **`Resources/Support Markee.md` must contain no task checkboxes.** It's opened from the read-only app bundle; a `- [ ]`/`- [x]` would invite a task-toggle write-back that fails against the signed bundle. Keep the support-nudge copy checkbox-free.
 - **Bumping a vendored library means regenerating the manifest in the same diff.** Change the URL/version in `scripts/fetch-vendor.sh`, run `just clean` (or `rm -rf Resources/web/vendor`) so the bumped file is actually re-downloaded rather than skipped (`fetch-vendor.sh` skips any existing non-empty output file), then `scripts/fetch-vendor.sh --write-manifest`, and commit the updated `scripts/vendor.sha256` alongside — otherwise the next fetch fails integrity verification.
 - **Mermaid uses the UMD bundle (`mermaid.min.js`), not the ESM split build.** The ESM entry imports a tree of separate chunk files that doesn't resolve cleanly under our custom URL scheme.
@@ -213,6 +241,12 @@ two Quick Look extensions under `Contents/PlugIns/`.
   whole defaults domain including `support.activationId`, which strands that
   activation on Polar's side and burns one of three slots until it's cleared in
   the customer portal.
+- **Updates must pass `Updater.updateRequirement`** (Developer ID Application,
+  team `N8427TN2XH`, bundle id `com.markee.preview`, strict nested-code check)
+  before the swap helper runs. Changing the signing team or bundle id means
+  updating that string in the same release — otherwise every installed copy
+  refuses the update and falls back to the manual download page. Ad-hoc dev
+  builds can't self-update by design.
 - **No `polar_oat_` token may enter the app bundle.** The customer-portal
   endpoints are unauthenticated by design; only the organization UUID ships.
 

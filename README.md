@@ -189,8 +189,9 @@ docs/demo.md           README hero document
 The Swift side is a thin host: a `DocumentGroup`, a per-window
 `PreviewController`, a `FileWatcher` (kqueue with atomic-save reattach), and
 two custom URL scheme handlers — `markee-app://` for bundle assets and
-`markee-doc://` for the current document's directory (sandboxed against path
-traversal *and* symlink escape). All Markdown rendering happens in JavaScript
+`markee-doc://` for files under the workspace root (the enclosing git repo or
+docs folder; sandboxed against path traversal *and* symlink escape — see
+[SECURITY.md](SECURITY.md)). All Markdown rendering happens in JavaScript
 inside the WebView; Swift just streams the file's source into
 `window.markee.render({…})` after every change.
 
