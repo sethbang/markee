@@ -430,7 +430,12 @@
     function initMermaid() {
         try {
             mermaidThemeInUse = mermaidTheme();
-            mermaidLib().initialize({ startOnLoad: false, theme: mermaidThemeInUse });
+            // look/layout pinned explicitly: Mermaid 12 changes both defaults
+            // (re-laying out and recolouring existing diagrams), so a future
+            // bump keeps today's appearance unless we opt in.
+            mermaidLib().initialize({
+                startOnLoad: false, theme: mermaidThemeInUse, look: "classic", layout: "dagre"
+            });
         } catch (_) { /* ignore */ }
     }
 

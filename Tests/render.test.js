@@ -135,3 +135,15 @@ test("splitFrontMatter keeps BOM and block verbatim", () => {
     assert.equal(splitFrontMatter("--- not fm\n").frontMatter, "");
     assert.equal(splitFrontMatter("---\na: 1\n---").body, "");
 });
+
+test("autolinks follow GFM: www. and schemes link, bare file names don't", () => {
+    const html = buildNodeRenderer().render(
+        "Visit www.example.com, https://example.com/x, mail me@example.com, read notes.md, README.md and example.com.\n");
+    assert.match(html, /<a href="http:\/\/www\.example\.com">www\.example\.com<\/a>/);
+    assert.match(html, /<a href="https:\/\/example\.com\/x">/);
+    assert.match(html, /<a href="mailto:me@example\.com">/);
+    assert.doesNotMatch(html, /href="http:\/\/notes\.md"/);
+    assert.doesNotMatch(html, /href="http:\/\/README\.md"/);
+    assert.doesNotMatch(html, /href="http:\/\/example\.com"/);
+    assert.match(html, /read notes\.md, README\.md and example\.com\./);
+});

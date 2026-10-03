@@ -28,27 +28,27 @@ fetch() {
 }
 
 echo "Fetching markdown-it and plugins…"
-fetch "https://cdn.jsdelivr.net/npm/markdown-it@14.1.0/dist/markdown-it.min.js" \
+fetch "https://cdn.jsdelivr.net/npm/markdown-it@15.0.2/dist/browser/markdown-it.umd.min.js" \
     "$VENDOR/markdown-it/markdown-it.min.js"
 fetch "https://cdn.jsdelivr.net/npm/markdown-it-footnote@4.0.0/dist/markdown-it-footnote.min.js" \
     "$VENDOR/markdown-it/markdown-it-footnote.min.js"
-fetch "https://cdn.jsdelivr.net/npm/markdown-it-deflist@3.0.0/dist/markdown-it-deflist.min.js" \
+fetch "https://cdn.jsdelivr.net/npm/markdown-it-deflist@4.0.0/dist/markdown-it-deflist.min.js" \
     "$VENDOR/markdown-it/markdown-it-deflist.min.js"
-fetch "https://cdn.jsdelivr.net/npm/markdown-it-attrs@4.3.1/markdown-it-attrs.browser.js" \
+fetch "https://cdn.jsdelivr.net/npm/markdown-it-attrs@5.0.1/markdown-it-attrs.browser.js" \
     "$VENDOR/markdown-it/markdown-it-attrs.min.js"
 fetch "https://cdn.jsdelivr.net/npm/markdown-it-task-lists@2.1.1/dist/markdown-it-task-lists.min.js" \
     "$VENDOR/markdown-it/markdown-it-task-lists.min.js"
 
 echo "Fetching highlight.js…"
-fetch "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.10.0/build/highlight.min.js" \
+fetch "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.12.0/build/highlight.min.js" \
     "$VENDOR/highlight/highlight.min.js"
-fetch "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.10.0/build/styles/github.min.css" \
+fetch "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.12.0/build/styles/github.min.css" \
     "$VENDOR/highlight/github.min.css"
-fetch "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.10.0/build/styles/github-dark.min.css" \
+fetch "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.12.0/build/styles/github-dark.min.css" \
     "$VENDOR/highlight/github-dark.min.css"
 
 echo "Fetching KaTeX…"
-KATEX_VER="0.16.11"
+KATEX_VER="0.19.0"
 fetch "https://cdn.jsdelivr.net/npm/katex@${KATEX_VER}/dist/katex.min.css" \
     "$VENDOR/katex/katex.min.css"
 fetch "https://cdn.jsdelivr.net/npm/katex@${KATEX_VER}/dist/katex.min.js" \
@@ -91,7 +91,11 @@ done
 echo "Fetching Mermaid (UMD bundle)…"
 # The ESM build splits into runtime-imported chunks that don't work behind
 # a custom URL scheme. The UMD bundle is one self-contained file.
-fetch "https://cdn.jsdelivr.net/npm/mermaid@11.4.0/dist/mermaid.min.js" \
+# HOLD on 11.x: Mermaid 12 bundles the ELK layout engine (EPL-2.0, the only
+# non-permissive code we'd ship), doubles the bundle (~5 MB, copied into the
+# app and both Quick Look extensions) and requires Safari 17.4+ WebKit while
+# Markee targets macOS 13. Revisit when the deployment target moves.
+fetch "https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.min.js" \
     "$VENDOR/mermaid/mermaid.min.js"
 # Remove any stale ESM artifacts from earlier fetches
 rm -f "$VENDOR/mermaid/mermaid.esm.min.mjs"

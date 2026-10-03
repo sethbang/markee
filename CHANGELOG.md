@@ -54,6 +54,12 @@ All notable changes to Markee are documented here. Format roughly follows
 - Markee registers as a Markdown *viewer*, and as only an alternate app for
   plain text; it no longer claims `.mmd` (Mermaid) files.
 - `just app` no longer replaces `/Applications/Markee.app`; use `just install`.
+- Updated bundled libraries: markdown-it 15.0.2 (includes fixes for
+  quadratic-time parsing), markdown-it-deflist 4.0.0, markdown-it-attrs
+  5.0.1, highlight.js 11.12.0, KaTeX 0.19.0 and Mermaid 11.17.2 (with
+  DOMPurify 3.4.12). Mermaid stays on 11.x for now.
+- Autolinks follow GitHub: `www.` addresses and `https://…` URLs link, but bare
+  file names like `notes.md` or `setup.py` no longer turn into web links.
 
 ## [1.1.0] — 2026-07-24
 

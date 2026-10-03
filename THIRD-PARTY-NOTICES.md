@@ -6,7 +6,7 @@ license, reproduced below. Markee itself is MIT-licensed (see `LICENSE`).
 
 ---
 
-## markdown-it 14.1.0
+## markdown-it 15.0.2
 
 Source: https://github.com/markdown-it/markdown-it
 License: MIT
@@ -64,13 +64,13 @@ THE SOFTWARE.
 
 ---
 
-## markdown-it-deflist 3.0.0
+## markdown-it-deflist 4.0.0
 
 Source: https://github.com/markdown-it/markdown-it-deflist
 License: MIT
 
 ```
-Copyright (c) 2015 Vitaly Puzrin, Alex Kocharin.
+Copyright (c) 2014-2015 Vitaly Puzrin, Alex Kocharin.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -93,13 +93,13 @@ THE SOFTWARE.
 
 ---
 
-## markdown-it-attrs 4.3.1
+## markdown-it-attrs 5.0.1
 
 Source: https://github.com/arve0/markdown-it-attrs
 License: MIT
 
 ```
-Copyright (c) 2015 Arve Seljebu
+Copyright (c) Arve Seljebu <arve.seljebu@gmail.com> (arve0.github.io)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -145,7 +145,7 @@ IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 ---
 
-## highlight.js 11.10.0
+## highlight.js 11.12.0
 
 Source: https://github.com/highlightjs/highlight.js
 License: BSD-3-Clause
@@ -183,7 +183,7 @@ SUCH DAMAGE.
 
 ---
 
-## KaTeX 0.16.11
+## KaTeX 0.19.0
 
 Source: https://github.com/KaTeX/KaTeX
 License: MIT
@@ -309,13 +309,13 @@ DEALINGS IN THE FONT SOFTWARE.
 
 ---
 
-## Mermaid 11.4.0
+## Mermaid 11.17.2
 
 Source: https://github.com/mermaid-js/mermaid
 License: MIT
 
 ```
-Copyright (c) 2014 - 2024 Knut Sveidqvist
+Copyright (c) 2014 - 2022 Knut Sveidqvist
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -340,14 +340,14 @@ THE SOFTWARE.
 
 `mermaid.min.js` is a single-file build that inlines Mermaid's own runtime
 dependencies. Most are MIT or ISC licensed (notably d3 — ISC, Copyright
-2010-2023 Mike Bostock); the full list is in Mermaid 11.4.0's
-[`package.json`](https://github.com/mermaid-js/mermaid/blob/mermaid%4011.4.0/packages/mermaid/package.json).
+2010-2023 Mike Bostock); the full list is in Mermaid 11.17.2's
+[`package.json`](https://github.com/mermaid-js/mermaid/blob/mermaid%4011.17.2/packages/mermaid/package.json).
 One is under a different license:
 
-**DOMPurify 3.1.6** — Copyright Cure53 and other contributors. Dual-licensed
+**DOMPurify 3.4.12** — Copyright Cure53 and other contributors. Dual-licensed
 under the Apache License 2.0 or the Mozilla Public License 2.0; Markee
 redistributes it under the **MPL-2.0**
 (https://www.mozilla.org/en-US/MPL/2.0/). It is distributed unmodified inside
 `mermaid.min.js`; its source code is available at
-https://github.com/cure53/DOMPurify/tree/3.1.6.
+https://github.com/cure53/DOMPurify/tree/3.4.12.
 

@@ -1,5 +1,12 @@
 # Keep the SHA-pinned GitHub Actions current (the workflows pin by commit SHA
 # with the version in a trailing comment; Dependabot updates both).
+#
+# Only GitHub Actions are managed here. The vendored JS/CSS (markdown-it,
+# KaTeX, highlight.js, Mermaid) is pinned by URL in scripts/fetch-vendor.sh with
+# a SHA-256 manifest — no package manifest exists for Dependabot to see, and
+# that is deliberate: bumps there are manual and reviewed (see the hold notes
+# in fetch-vendor.sh, e.g. Mermaid is held on 11.x). Don't add an npm
+# ecosystem for them.
 version: 2
 updates:
   - package-ecosystem: github-actions

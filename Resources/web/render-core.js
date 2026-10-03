@@ -120,6 +120,36 @@
         md.renderer.rules.wikilink_broken_close = function (t, i, o, e, self) { return self.renderToken(t, i, o); };
     }
 
+    // GFM-style autolinks. linkify-it's "fuzzy" mode links any bare domain —
+    // including file names, since .md (Moldova) and .py are real TLDs, so
+    // "see notes.md" became a link to http://notes.md. Fuzzy matching stays on
+    // (v6 turned it off, which also dropped www.example.com), and this rule
+    // demotes every fuzzy match that isn't www.-prefixed back to plain text.
+    // Scheme-qualified URLs and email addresses are untouched.
+    function gfmAutolinkPlugin(md) {
+        if (md.linkify && typeof md.linkify.set === "function") md.linkify.set({ fuzzyLink: true });
+        const KEEP = /^(?:[a-z][a-z0-9+.-]*:|www\.)|@/i;
+        md.core.ruler.push("markee_gfm_autolinks", function (state) {
+            for (const block of state.tokens) {
+                if (block.type !== "inline" || !block.children) continue;
+                const out = [];
+                const kids = block.children;
+                for (let i = 0; i < kids.length; i++) {
+                    const t = kids[i];
+                    const text = kids[i + 1], close = kids[i + 2];
+                    if (t.type === "link_open" && t.markup === "linkify" && text && text.type === "text"
+                        && close && close.type === "link_close" && !KEEP.test(text.content)) {
+                        out.push(text);
+                        i += 2;
+                        continue;
+                    }
+                    out.push(t);
+                }
+                block.children = out;
+            }
+        });
+    }
+
     // Build a configured markdown-it instance. `deps.markdownit` is required;
     // `deps.hljs` enables syntax highlighting (omitted in Node → escaped code).
     // Plugin deps are optional and skipped when absent.
@@ -163,6 +193,7 @@
         // attributes — script injection independent of `html: true`.
         use(deps.attrs, { allowedAttributes: ["id", "class", /^data-.*$/, "width", "height", "lang", "title", "dir"] });
         use(deps.taskLists, { enabled: true, label: true });
+        m.use(gfmAutolinkPlugin);
         m.use(wikiLinkPlugin);
         m.use(sourceLinePlugin);
         return m;
