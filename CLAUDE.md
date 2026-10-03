@@ -282,8 +282,12 @@ by Apple and the ticket stapled. The app itself is **not** sandboxed — it watc
 **CI:** `release.yml` (tag-triggered) imports the cert and notarizes
 automatically. It needs five repo secrets: `MACOS_CERT_P12` (base64 of the
 Developer ID `.p12`), `MACOS_CERT_PASSWORD`, `NOTARY_KEY_P8` (base64 of the API
-key `.p8`), `NOTARY_KEY_ID`, `NOTARY_ISSUER_ID`. `ci.yml` (push/PR) stays
-ad-hoc — signing secrets must never reach PR builds.
+key `.p8`), `NOTARY_KEY_ID`, `NOTARY_ISSUER_ID`. The job runs in the `release`
+environment and refuses tags whose commit isn't on `main`; give that
+environment required reviewers (and move the five secrets into it) so a pushed
+tag alone can't sign and publish. `ci.yml` (push/PR) stays ad-hoc — signing
+secrets must never reach PR builds. Actions are pinned by commit SHA (version
+in a trailing comment); `.github/dependabot.yml` keeps them current.
 
 ## Not yet built
 

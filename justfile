@@ -22,9 +22,11 @@ build:
 icon:
     ./scripts/build-icon.sh
 
-# Fetch pinned JS/CSS into Resources/web/vendor/ on first run; skip thereafter.
+# Fetch pinned JS/CSS into Resources/web/vendor/ and verify every file against
+# scripts/vendor.sha256. Runs on every build: present files aren't re-downloaded,
+# but they're always re-hashed, so a tampered or stale vendor dir never ships.
 fetch-vendor:
-    [ -f Resources/web/vendor/.fetched ] || { ./scripts/fetch-vendor.sh && touch Resources/web/vendor/.fetched; }
+    ./scripts/fetch-vendor.sh
 
 # Build the signed Markee.app bundle (vendor + binaries + Quick Look extensions).
 app: fetch-vendor build icon

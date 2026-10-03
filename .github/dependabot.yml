@@ -1,0 +1,8 @@
+# Keep the SHA-pinned GitHub Actions current (the workflows pin by commit SHA
+# with the version in a trailing comment; Dependabot updates both).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

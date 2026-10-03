@@ -127,6 +127,25 @@ final class PreviewControllerTests: XCTestCase {
         XCTAssertTrue(controller.workspace.wikiIndex.isEmpty)   // old root's index dropped
     }
 
+    /// Navigation keeps addressing files through a symlinked workspace root, so
+    /// docBase and history stay consistent with the root (and %-escapes decode).
+    func test_navigate_keepsSymlinkedRootAndDecodesPath() throws {
+        let real = tempDir.appendingPathComponent("real")
+        try FileManager.default.createDirectory(at: real.appendingPathComponent(".git"), withIntermediateDirectories: true)
+        try "# A\n".write(to: real.appendingPathComponent("a.md"), atomically: true, encoding: .utf8)
+        try "# B\n".write(to: real.appendingPathComponent("b c.md"), atomically: true, encoding: .utf8)
+        let link = tempDir.appendingPathComponent("link")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: real)
+        let controller = PreviewController(fileURL: link.appendingPathComponent("a.md"))
+
+        controller.userContentController(
+            WKUserContentController(),
+            didReceive: FakeMessage(name: "markee", body: ["kind": "navigate", "path": "/b%20c.md"]))
+
+        XCTAssertEqual(controller.fileURL.path, link.appendingPathComponent("b c.md").standardizedFileURL.path)
+        XCTAssertNil(controller.errorBanner)
+    }
+
     /// A `scrollSection` with no id (null) clears `currentHeadingID`.
     func test_scrollSectionMessage_withNoID_clears() throws {
         let file = tempDir.appendingPathComponent("doc.md")

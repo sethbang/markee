@@ -48,11 +48,33 @@ final class SchemeHandlerTests: XCTestCase {
         XCTAssertNil(resolveSandboxed(root: tempDir, requestPath: "/a/../../outside/x"))
     }
 
+    /// Callers pass `URL.path`, which decodes `%2e%2e` to `..` — use real URLs.
     func test_percentEncodedDotDotTraversal_returnsNil() {
-        // URL.path already decodes most paths, but resolveSandboxed defensively
-        // decodes again. Both forms should be blocked.
-        XCTAssertNil(resolveSandboxed(root: tempDir, requestPath: "/%2e%2e/outside/x"))
-        XCTAssertNil(resolveSandboxed(root: tempDir, requestPath: "/%2E%2E/outside/x"))
+        for s in ["markee-doc://doc/%2e%2e/outside/x", "markee-doc://doc/%2E%2E/outside/x",
+                  "markee-doc://doc/a/%2e%2e%2f%2e%2e/outside/x"] {
+            let path = URL(string: s)!.path
+            XCTAssertNil(resolveSandboxed(root: tempDir, requestPath: path), s)
+        }
+    }
+
+    func test_fileNameContainingLiteralPercentResolves() throws {
+        try Data().write(to: tempDir.appendingPathComponent("100% done.png"))
+        let path = URL(string: "markee-doc://doc/100%25%20done.png")!.path
+        XCTAssertEqual(resolveSandboxed(root: tempDir, requestPath: path)?.lastPathComponent, "100% done.png")
+    }
+
+    func test_symlinkedDirectoryPointingOutside_returnsNil() throws {
+        try Data().write(to: outsideDir.appendingPathComponent("x.txt"))
+        try FileManager.default.createSymbolicLink(
+            at: tempDir.appendingPathComponent("escape"), withDestinationURL: outsideDir)
+        XCTAssertNil(resolveSandboxed(root: tempDir, requestPath: "/escape/x.txt"))
+    }
+
+    func test_rootReachedThroughSymlinkStillServesItsFiles() throws {
+        try Data().write(to: tempDir.appendingPathComponent("a.png"))
+        let linkRoot = outsideDir.appendingPathComponent("docs-link")
+        try FileManager.default.createSymbolicLink(at: linkRoot, withDestinationURL: tempDir)
+        XCTAssertNotNil(resolveSandboxed(root: linkRoot, requestPath: "/a.png"))
     }
 
     func test_rootRequest_resolvesToRootItself() {

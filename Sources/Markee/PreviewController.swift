@@ -908,11 +908,19 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
 
     /// Resolve a markee-doc path within the workspace root and either open a new
     /// window or navigate the current one. Out-of-root paths are rejected.
-    private func handleNavigate(path: String, fragment: String, newWindow: Bool) {
-        guard let target = resolveSandboxed(root: workspace.root, requestPath: path) else {
+    private func handleNavigate(path rawPath: String, fragment: String, newWindow: Bool) {
+        // JS sends `URL.pathname`, which is still percent-encoded.
+        let path = rawPath.removingPercentEncoding ?? rawPath
+        guard resolveSandboxed(root: workspace.root, requestPath: path) != nil else {
             errorBanner = "Link points outside the workspace folder."
             return
         }
+        // Address the file through the (unresolved) workspace root rather than
+        // the symlink-resolved sandbox result, so docBase, the file-tree
+        // highlight and history dedupe keep matching when the root itself is
+        // reached through a symlink.
+        let target = workspace.root.appendingPathComponent(
+            String(path.drop(while: { $0 == "/" }))).standardizedFileURL
         guard ["md", "markdown"].contains(target.pathExtension.lowercased()) else {
             openWorkspaceFile(path: path)
             return
