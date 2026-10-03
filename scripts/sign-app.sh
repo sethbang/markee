@@ -25,8 +25,6 @@ fi
 # rejects an ambiguous name.
 IDENTITY="${CODESIGN_IDENTITY:-}"
 if [ -z "$IDENTITY" ]; then
-    # Match by SHA-1 hash (field 2), not name: a keychain may hold more than
-    # one cert with the same name, and codesign rejects an ambiguous name.
     # A single awk (no grep) prints nothing and exits 0 on no match, so the
     # ad-hoc fallback below stays reachable under `set -euo pipefail`.
     IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null \
@@ -58,16 +56,18 @@ if [ ! -f "$EXT_ENTITLEMENTS" ]; then
 fi
 
 for appex in "$PREVIEW_APPEX" "$THUMBNAIL_APPEX"; do
-    if [ -d "$appex" ]; then
-        echo "sign-app: signing $appex (sandboxed extension)"
-        codesign "${SIGN_ARGS[@]}" --entitlements "$EXT_ENTITLEMENTS" "$appex"
+    # A missing extension means a broken bundle (Quick Look silently gone):
+    # fail rather than ship it.
+    if [ ! -d "$appex" ]; then
+        echo "sign-app: missing extension $appex" >&2
+        exit 1
     fi
+    echo "sign-app: signing $appex (sandboxed extension)"
+    codesign "${SIGN_ARGS[@]}" --entitlements "$EXT_ENTITLEMENTS" "$appex"
 done
 
-if [ -d "$APP" ]; then
-    echo "sign-app: signing $APP"
-    codesign "${SIGN_ARGS[@]}" "$APP"
-fi
+echo "sign-app: signing $APP"
+codesign "${SIGN_ARGS[@]}" "$APP"
 
 codesign --verify --strict --verbose=2 "$APP"
 echo "sign-app: done ($APP)"

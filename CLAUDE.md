@@ -10,17 +10,24 @@ distributed outside the App Store as a Developer-ID-signed, notarized `.app`.
 ## Run
 
 ```sh
-just fetch-vendor   # one-time: downloads JS/CSS into Resources/web/vendor/ (gitignored)
-just app            # builds Markee.app at the repo root
+just fetch-vendor   # downloads JS/CSS into Resources/web/vendor/ (gitignored) + verifies the manifest
+just app            # builds Markee.app at the repo root (never touches /Applications)
 just run            # builds + opens
 just reset          # wipe ALL local state + relaunch a fresh, un-licensed install
 just reset-nudges   # like reset, but force the supporter nudges on immediately (no grace period)
 just reset-sandbox  # like reset-nudges, but point at the Polar sandbox (sources .env.local) for licensing tests
 just clean-install  # full from-scratch: remove + rebuild + reinstall + wipe + relaunch
-just test           # swift test + node --test (util.test.js, render.test.js, wikilink.test.js)
-just install        # builds and installs Markee.app to /Applications
+just test           # swift test + node --test (util, render, wikilink, reflow .test.js)
+just dev            # launch with the Debug menu (MARKEE_DEV_TOOLS=1) + forced nudge/supporter state
+just install        # builds, quits Markee, replaces /Applications/Markee.app
 just notarize       # builds, signs, notarizes, and staples (see "Signing & notarization")
 ```
+
+Swift tests need full Xcode — the Command Line Tools have no XCTest, so if
+`xcode-select -p` points at CommandLineTools, prefix with
+`DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` (same for
+`swiftlint`). Never run `just reset*`/`clean-install` casually: see the
+Polar activation note under invariants.
 
 `swift build` alone produces just the executables in `.build/`; `just app`
 assembles the usable `.app` bundle — Info.plist, icons, `Resources/`, and the
@@ -29,12 +36,16 @@ two Quick Look extensions under `Contents/PlugIns/`.
 ## Layout
 
 - `Sources/MarkeeKit/` — shared library used by the app and both extensions
-  - `WebRenderer.swift` — headless WKWebView Markdown renderer
+  - `WebRenderer.swift` — headless WKWebView Markdown renderer (Quick Look:
+    remote-load block list, template-pinned navigation, throwing `render`)
+  - `WeakScriptMessageHandler.swift` — weak trampoline every `markee`
+    message-handler registration goes through (avoids the retain cycle)
   - `SchemeHandlers.swift` — `markee-app://` (bundle resources) and
     `markee-doc://` (rooted at the workspace root; each document keeps its own
     `<base href>` so relative links still resolve — path traversal above the
     root blocked by `resolveSandboxed`)
-  - `FileReader.swift` — encoding-tolerant file reader
+  - `FileReader.swift` — encoding-tolerant reader (`readDecodedFile` returns
+    the detected encoding + BOM so write-back is byte-compatible)
   - `Timeout.swift`, `ThumbnailLayout.swift` — async-timeout and thumbnail
     page-fit helpers
 - `Sources/Markee/` — the SwiftUI app
@@ -62,11 +73,16 @@ two Quick Look extensions under `Contents/PlugIns/`.
     heart. Activation hits Polar's public (unauthenticated) customer-portal
     endpoint, so no API key ships in the app. `SupportConfig` reads
     `MARKEE_POLAR_BASE_URL`/`MARKEE_POLAR_ORG_ID` from the environment to point
-    a local build at the Polar sandbox for testing.
+    a local build at the Polar sandbox for testing. **Dormant in v1.1.0:**
+    `SupportConfig.productionOrganizationID` is empty while the Polar org is in
+    test mode, which hides the whole supporter surface (heart, menu items,
+    monthly doc); restore it with the `/support` redirect and footer link at
+    licensing go-live.
   - `UsageStats.swift` / `UsageTracker.swift` — local-only usage counters
     (documents previewed, re-renders watched, active days, boxes checked) shown
-    in the support drawer. File paths are stored only as salted SHA-256 hashes;
-    nothing here is ever transmitted.
+    in the support drawer. File paths are stored only as salted, truncated SHA-256
+    hashes (salt kept in the same defaults domain — it prevents lookup tables,
+    not local guessing); nothing here is ever transmitted.
   - `SettingsStore.swift` / `SettingsView.swift` — Preferences window (Settings
     scene, ⌘,): the `UserDefaults`-backed source of truth (theme override,
     accent, base font, custom-CSS path, update-check, default-float, editor),
@@ -80,6 +96,9 @@ two Quick Look extensions under `Contents/PlugIns/`.
   - `MarkeeTitlebar.swift` / `WindowAccessor.swift` — the custom titlebar view
     (centered filename, sidebar toggle, back/forward chevrons, support heart,
     word-count pill) and the `NSWindow` accessor that flips the titlebar flags.
+  - `TaskToggle.swift` — pure checkbox-line rewrite behind task write-back.
+  - `DebugCommands.swift` — Debug menu (only with `MARKEE_DEV_TOOLS=1`, i.e.
+    `just dev`): licensing-state controls such as Deactivate This Mac.
   - `NavigationPolicy.swift` — pure main-frame/link navigation decisions
     (template-only main frame, link hand-off, safe-to-open file types).
   - `MarkeeWebView.swift` — `WKWebView` subclass extending the native
@@ -93,17 +112,19 @@ two Quick Look extensions under `Contents/PlugIns/`.
 - `Sources/MarkeeQuickLookThumbnail/` — Quick Look thumbnail extension
   (`QLThumbnailProvider`) → `QuickLookThumbnail.appex`
 - `Resources/web/` — HTML/JS/CSS shipped into every bundle
-  - `template.html` — loads vendor scripts, then `util.js`, `render-core.js`,
-    then `app.js`
+  - `template.html` — strict CSP, then vendor scripts, then `util.js`,
+    `render-core.js`, `reflow.js`, then `app.js`
   - `app.js` — IIFE wrapping `render`, `scrollToHeading`, `exportStandalone`,
-    `setZoom`, `applySettings`, `find`/`clearFind`, `toast`, plus the
-    task-toggle and in-window `.md`-link navigation handlers. Exposes
-    `window.markee`.
+    `reflow`, `renderedText`, `setZoom`, `applySettings`, `find`/`clearFind`,
+    `toast`, plus the task-toggle, `#fragment` and in-window `.md`-link
+    navigation handlers. Exposes `window.markee`.
   - `util.js` — pure helpers (`slugify`, `pickActiveHeading`, find/selection
     and currency-mask helpers), UMD so Node can require them for tests
   - `render-core.js` — markdown-it pipeline construction (`createRenderer`,
     `splitFrontMatter`/`stripFrontMatter`, `escapeHtml`, the source-line
     `data-line` stamping); UMD so Node snapshot tests can require it
+  - `reflow.js` — Copy Reflowed Markdown (⌥⌘C): unwraps soft-wrapped
+    paragraphs using the same markdown-it parse; exposes `window.markeeReflow`
   - `theme.css` — built-in light/dark theme
   - `vendor/` — fetched libs; **gitignored**
 - `Resources/Info.plist`, `Resources/QuickLookPreview-Info.plist`,
@@ -119,10 +140,14 @@ two Quick Look extensions under `Contents/PlugIns/`.
 - `scripts/vendor.sha256` — SHA-256 manifest of every vendored file;
   `fetch-vendor.sh` fails on mismatch
 - `Tests/MarkeeTests/`, `Tests/MarkeeKitTests/` — Swift unit tests;
-  `Tests/util.test.js` — Node `--test` runner over `util.js`
+  `Tests/{util,render,wikilink,reflow}.test.js` — Node `--test` suites
+  (helpers, render snapshot + source lines + attrs allowlist, wiki-links,
+  reflow); `Tests/snapshots/sample.html` is the render golden
 - `.github/workflows/` — `ci.yml` (lint + build/test on push/PR) and
   `release.yml` (tag-triggered signed + notarized release)
 - `fixtures/sample.md` — exercises most rendering features
+- `site/` + `wrangler.toml` — the markee.sbang.dev landing page, deployed as
+  Cloudflare Workers static assets (`_headers` carries its CSP/HSTS)
 
 ## How the JS↔Swift bridge works
 

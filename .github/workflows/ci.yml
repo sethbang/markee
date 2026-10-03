@@ -69,6 +69,8 @@ jobs:
           test -f Markee.app/Contents/Resources/LICENSE
           test -f Markee.app/Contents/Resources/THIRD-PARTY-NOTICES.md
           test -d Markee.app/Contents/Resources/web/vendor
+          test -x Markee.app/Contents/PlugIns/QuickLookPreview.appex/Contents/MacOS/MarkeeQuickLookPreview
+          test -x Markee.app/Contents/PlugIns/QuickLookThumbnail.appex/Contents/MacOS/MarkeeQuickLookThumbnail
 
       - name: Upload .app artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

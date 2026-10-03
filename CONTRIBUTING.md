@@ -7,7 +7,7 @@ so we can talk through the approach before you spend time on it.
 ## Build + test
 
 ```sh
-just fetch-vendor   # one-time
+just fetch-vendor   # pinned vendored JS/CSS (re-verified on every build)
 just app            # builds Markee.app at the repo root
 just test           # Swift + JS tests
 ```

@@ -77,7 +77,11 @@ final class UsageTracker: ObservableObject {
 
     // MARK: - Helpers
 
-    /// Per-install random salt so a known path's hash can't be confirmed.
+    /// Per-install random salt, so stored hashes can't be matched against a
+    /// precomputed table or across installs. It lives in the same defaults
+    /// domain, so it doesn't stop someone with access to this Mac's preferences
+    /// from testing a guessed path — the hashes only avoid storing paths in the
+    /// clear. Truncated to 64 bits: enough to count distinct documents.
     private func salt() -> String {
         if let s = defaults.string(forKey: Keys.salt) { return s }
         let s = UUID().uuidString

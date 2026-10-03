@@ -57,19 +57,14 @@ app: fetch-vendor build icon
     cp -R Resources/web {{app_bundle}}/Contents/PlugIns/QuickLookThumbnail.appex/Contents/Resources/
     # Sign: Developer ID + Hardened Runtime when available, ad-hoc otherwise.
     ./scripts/sign-app.sh {{app_bundle}}
-    echo "Built {{app_bundle}}"
-    if [ -L "{{installed}}" ] || [ -d "{{installed}}" ]; then
-        echo "Syncing to {{installed}}..."
-        rm -rf "{{installed}}"
-        cp -R {{app_bundle}} "{{installed}}"
-        {{lsregister}} -f "{{installed}}"
-    fi
+    echo "Built {{app_bundle}} (not installed — run \`just install\` to replace {{installed}})"
 
-# Install Markee.app to /Applications (quits a running instance first).
-install: app
+# Build, then replace /Applications/Markee.app (quits a running instance first).
+# The only recipe besides clean-install that touches the installed copy: an
+# ad-hoc dev build there can't pass the updater's signature check.
+install: _quit app
     #!/usr/bin/env bash
     set -euo pipefail
-    osascript -e 'tell application "Markee" to quit' 2>/dev/null || true
     rm -rf "{{installed}}"
     cp -R {{app_bundle}} "{{installed}}"
     {{lsregister}} -f "{{installed}}"
@@ -102,7 +97,7 @@ test: test-swift test-js
 test-swift:
     swift test
 
-# JS pure-helper + render-snapshot + wiki-link tests.
+# JS helper, render-snapshot/source-line, wiki-link and reflow tests.
 test-js:
     node --test Tests/util.test.js Tests/render.test.js Tests/wikilink.test.js Tests/reflow.test.js
 

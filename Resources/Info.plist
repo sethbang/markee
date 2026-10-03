@@ -40,17 +40,28 @@
             <key>CFBundleTypeIconFile</key>
             <string>DocIcon</string>
             <key>CFBundleTypeRole</key>
-            <string>Editor</string>
+            <string>Viewer</string>
             <key>LSHandlerRank</key>
             <string>Default</string>
             <key>LSItemContentTypes</key>
             <array>
                 <string>net.daringfireball.markdown</string>
+            </array>
+        </dict>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>Plain Text Document</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+            <key>LSItemContentTypes</key>
+            <array>
                 <string>public.plain-text</string>
             </array>
         </dict>
     </array>
-    <key>UTExportedTypeDeclarations</key>
+    <key>UTImportedTypeDeclarations</key>
     <array>
         <dict>
             <key>UTTypeIdentifier</key>
@@ -73,7 +84,6 @@
                     <string>mdwn</string>
                     <string>mdtxt</string>
                     <string>mdtext</string>
-                    <string>mmd</string>
                     <string>multimarkdown</string>
                 </array>
                 <key>public.mime-type</key>

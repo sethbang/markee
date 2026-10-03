@@ -16,6 +16,43 @@ All notable changes to Markee are documented here. Format roughly follows
 - **Developer Debug menu** (`MARKEE_DEV_TOOLS=1`) for exercising licensing
   state locally without contacting Polar.
 
+### Security
+- The preview page now has a strict Content-Security-Policy: document script
+  (inline `<script>`, `on*=` handlers, `javascript:` URLs, workspace `.js`)
+  never runs, and `{…}` attribute syntax is limited to an allowlist.
+- The native bridge only accepts messages from the preview's own main frame,
+  and the main frame can no longer be navigated away from the preview.
+- Quick Look previews and thumbnails block all remote loads.
+- Updates must carry Markee's Developer ID signature before they're installed.
+- Workspace root inference never widens to your home folder or above.
+- Vendored JS is re-verified against its SHA-256 manifest on every build;
+  CI actions are pinned by commit and releases require a commit on `main`.
+
+### Fixed
+- Clicking a task checkbox could rewrite the wrong line (blockquoted tasks,
+  code in list items, HTML blocks, CRLF or `...` front matter, `1)` lists).
+  Write-back now follows symlinks, keeps the file's encoding and BOM, and
+  re-syncs the checkbox when it can't apply.
+- Closed windows were never freed (WebView, file watcher and observers leaked).
+- Legacy-encoded (Windows-1252/Latin-1) files no longer render as CJK mojibake.
+- Exported HTML no longer gets dark code blocks, and keeps its math fonts.
+- Open in Editor no longer freezes the UI on slow shell startup files.
+- Footnote and in-page `#links` scroll instead of breaking the preview;
+  links to images/PDFs in the workspace open in their default app.
+- Many smaller fixes: search result races, slug collisions and non-ASCII
+  heading anchors, Mermaid following the theme override, Find ignoring
+  KaTeX's hidden MathML, outline lines with raw-HTML headings, `#`/`%` in
+  workspace paths, deleted-file detection, WebContent crash recovery, the
+  CLI opening multiple files, and the titlebar filename overlapping the
+  back/forward buttons.
+
+### Changed
+- Terminal editors (`nvim`, `vim`, `hx`) are no longer auto-detected for
+  Open in Editor — they can't run without a terminal.
+- Markee registers as a Markdown *viewer*, and as only an alternate app for
+  plain text; it no longer claims `.mmd` (Mermaid) files.
+- `just app` no longer replaces `/Applications/Markee.app`; use `just install`.
+
 ## [1.1.0] — 2026-07-24
 
 ### Added
@@ -30,6 +67,9 @@ All notable changes to Markee are documented here. Format roughly follows
   hover or hold a modifier.
 - **Rendering polish** — copy-code buttons and language badges on code blocks,
   heading anchor links, and a live word-count pill.
+- **Copy Reflowed Markdown (⌥⌘C)** and **Copy as Rendered Text (⇧⌥⌘C)** —
+  copy the source with soft-wrapped paragraphs unwrapped, or the rendered
+  content as flowing plain text (also in the preview's right-click menu).
 - **Export PDF… (⇧⌘E)** — write the rendered document straight to a PDF,
   alongside the existing Export Standalone HTML.
 - **Commercial / Team license materials** (`COMMERCIAL.md`,

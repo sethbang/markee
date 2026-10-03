@@ -335,3 +335,19 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
+
+### Bundled within Mermaid
+
+`mermaid.min.js` is a single-file build that inlines Mermaid's own runtime
+dependencies. Most are MIT or ISC licensed (notably d3 — ISC, Copyright
+2010-2023 Mike Bostock); the full list is in Mermaid 11.4.0's
+[`package.json`](https://github.com/mermaid-js/mermaid/blob/mermaid%4011.4.0/packages/mermaid/package.json).
+One is under a different license:
+
+**DOMPurify 3.1.6** — Copyright Cure53 and other contributors. Dual-licensed
+under the Apache License 2.0 or the Mozilla Public License 2.0; Markee
+redistributes it under the **MPL-2.0**
+(https://www.mozilla.org/en-US/MPL/2.0/). It is distributed unmodified inside
+`mermaid.min.js`; its source code is available at
+https://github.com/cure53/DOMPurify/tree/3.1.6.
+
