@@ -20,6 +20,8 @@ All notable changes to Markee are documented here. Format roughly follows
 - The preview page now has a strict Content-Security-Policy: document script
   (inline `<script>`, `on*=` handlers, `javascript:` URLs, workspace `.js`)
   never runs, and `{…}` attribute syntax is limited to an allowlist.
+  Visible effects: `<iframe>` embeds (e.g. videos) no longer load, and remote
+  images load only over `https:` (`http:` images are blocked).
 - The native bridge only accepts messages from the preview's own main frame,
   and the main frame can no longer be navigated away from the preview.
 - Quick Look previews and thumbnails block all remote loads.

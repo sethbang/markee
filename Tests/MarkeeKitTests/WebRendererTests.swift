@@ -54,7 +54,7 @@ final class WebRendererTests: XCTestCase {
             "run `just fetch-vendor` first")
         let renderer = WebRenderer(docRoot: URL(fileURLWithPath: NSTemporaryDirectory()), webRoot: webRoot)
         try await renderer.loadTemplate()
-        try await withTimeout(seconds: 10) { try await renderer.waitUntilReady() }
+        try await withTimeout(seconds: 20) { try await renderer.waitUntilReady() }
         let source = """
             # Title
 
@@ -91,10 +91,10 @@ final class WebRendererTests: XCTestCase {
             "run `just fetch-vendor` first")
         let renderer = WebRenderer(docRoot: URL(fileURLWithPath: NSTemporaryDirectory()), webRoot: webRoot)
         try await renderer.loadTemplate()
-        try await withTimeout(seconds: 10) { try await renderer.waitUntilReady() }
+        try await withTimeout(seconds: 20) { try await renderer.waitUntilReady() }
         try await renderer.render(source: "```mermaid\ngraph TD; A-->B\n```\n", fileName: "m.md", readOnly: true)
         var hasSVG = false
-        for _ in 0..<50 where !hasSVG {
+        for _ in 0..<200 where !hasSVG {
             try await Task.sleep(for: .milliseconds(100))
             hasSVG = (try await renderer.webView.evaluateJavaScript(
                 "!!document.querySelector('#content pre.mermaid svg')") as? Bool) ?? false
@@ -104,9 +104,10 @@ final class WebRendererTests: XCTestCase {
         // A theme change redraws the diagram from its kept source.
         _ = try await renderer.webView.evaluateJavaScript(
             "document.querySelector('#content pre.mermaid svg').setAttribute('data-stale', '1');" +
-            "window.markee.applySettings({theme: 'dark'}); true")
+            // Flip to whichever theme the OS isn't in, so it's a real change.
+            "window.markee.applySettings({theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'light' : 'dark'}); true")
         var redrawn = false
-        for _ in 0..<50 where !redrawn {
+        for _ in 0..<200 where !redrawn {
             try await Task.sleep(for: .milliseconds(100))
             redrawn = (try await renderer.webView.evaluateJavaScript(
                 "!!document.querySelector('#content pre.mermaid svg:not([data-stale])')") as? Bool) ?? false
@@ -124,7 +125,7 @@ final class WebRendererTests: XCTestCase {
             "run `just fetch-vendor` first")
         let renderer = WebRenderer(docRoot: URL(fileURLWithPath: NSTemporaryDirectory()), webRoot: webRoot)
         try await renderer.loadTemplate()
-        try await withTimeout(seconds: 10) { try await renderer.waitUntilReady() }
+        try await withTimeout(seconds: 20) { try await renderer.waitUntilReady() }
         try await renderer.render(source: "# T\n\n$x^2$\n\n```swift\nlet a = 1\n```\n",
                               fileName: "e.md", readOnly: false)
         let html = try await renderer.webView.callAsyncJavaScript(

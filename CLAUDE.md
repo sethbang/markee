@@ -99,6 +99,9 @@ two Quick Look extensions under `Contents/PlugIns/`.
   - `TaskToggle.swift` — pure checkbox-line rewrite behind task write-back.
   - `DebugCommands.swift` — Debug menu (only with `MARKEE_DEV_TOOLS=1`, i.e.
     `just dev`): licensing-state controls such as Deactivate This Mac.
+  - `PreviewController+Export.swift` — print, Export PDF, Export HTML.
+  - `BridgeMessage.swift` — typed, pure parse of every `markee` bridge
+    message; the trust check stays in `userContentController`.
   - `NavigationPolicy.swift` — pure main-frame/link navigation decisions
     (template-only main frame, link hand-off, safe-to-open file types).
   - `MarkeeWebView.swift` — `WKWebView` subclass extending the native
@@ -231,6 +234,14 @@ two Quick Look extensions under `Contents/PlugIns/`.
   `util.js`). Without it, drag-selecting checklist text toggles the box, writes
   the file, re-renders, and collapses the selection — which also wipes find
   highlights via `clearFind()`.
+- **Menu commands reach every window; only the key window acts.**
+  `PreviewController.registerCommands` is the one table: key-window commands
+  share a single `isKeyWindow` guard, while `.zoomDidChange` and
+  `.settingsDidChange` are deliberate broadcasts every window applies. The
+  observers are block-based, so their tokens are removed in `deinit` and
+  they capture `self` weakly (the deallocation test catches a strong capture).
+  Call into the page through `callJS` (JSON-encoded arguments), never by
+  interpolating strings into `evaluateJavaScript`.
 - **The word-count pill is SwiftUI, not DOM** — keep doc stats out of `#content`
   so they never reach Export/Print/Quick Look.
 - **`render-core.js` owns markdown-it construction** and is loaded before

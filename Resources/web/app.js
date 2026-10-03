@@ -387,7 +387,7 @@
     // synchronously during dispatch), THEN invoke each queued `then`. On failure
     // the queue is dropped — diagrams stay as code — and a later render retries.
     function ensureMermaid(then) {
-        if (mermaidState === "ready" && window.mermaid) { then(); return; }
+        if (mermaidLib()) { then(); return; }
         mermaidWaiters.push(then);
         if (mermaidState === "loading") return;
         mermaidState = "loading";
@@ -415,15 +415,33 @@
         return dark ? "dark" : "default";
     }
 
+    // The loaded library, or null. Never test `window.mermaid` for truthiness:
+    // a heading slugged "mermaid" (`## Mermaid`) makes it the <h2> element via
+    // named window access until the script loads.
+    function mermaidLib() {
+        const m = window.mermaid;
+        return mermaidState === "ready" && m && typeof m.run === "function" ? m : null;
+    }
+
+    // The theme Mermaid was last initialized with; a redraw happens only when
+    // the effective theme moves away from it.
+    let mermaidThemeInUse = null;
+
     function initMermaid() {
         try {
-            window.mermaid.initialize({ startOnLoad: false, theme: mermaidTheme() });
+            mermaidThemeInUse = mermaidTheme();
+            mermaidLib().initialize({ startOnLoad: false, theme: mermaidThemeInUse });
         } catch (_) { /* ignore */ }
     }
 
+    // mermaid.run calls are chained, never concurrent: two overlapping runs
+    // over the same <pre> fight over its contents ("x.firstChild is null").
+    let mermaidQueue = Promise.resolve();
+
     function runMermaid(article) {
-        if (!window.mermaid) return;
-        try {
+        const mermaid = mermaidLib();
+        if (!mermaid) return;
+        mermaidQueue = mermaidQueue.then(() => {
             article.querySelectorAll("pre.mermaid").forEach((el) => {
                 // Mermaid replaces the source with its SVG; keep the source so
                 // a theme change can redraw the diagram.
@@ -431,12 +449,10 @@
                 else if (el.dataset.mermaidSource !== undefined) el.textContent = el.dataset.mermaidSource;
                 el.removeAttribute("data-processed");
             });
-            window.mermaid.run({ querySelector: "#content pre.mermaid" }).catch((e) => {
-                post("error", { message: "Diagram rendering failed: " + errMsg(e) });
-            });
-        } catch (e) {
+            return mermaid.run({ querySelector: "#content pre.mermaid" });
+        }).catch((e) => {
             post("error", { message: "Diagram rendering failed: " + errMsg(e) });
-        }
+        });
     }
 
     // ---- find ---------------------------------------------------------------
@@ -754,18 +770,15 @@ ${cssParts.join("\n\n")}
     // with the current OS color scheme. Actual diagram rendering is driven by
     // the onload waiter callback queued in render(), not from here.
     window.addEventListener("markee:mermaid-ready", () => {
-        if (window.mermaid && typeof window.mermaid.initialize === "function") initMermaid();
+        if (mermaidLib()) initMermaid();
     });
 
     // Diagrams are drawn in the theme current at render time; redraw them when
     // the effective theme changes (Preferences override or OS appearance).
-    let lastMermaidTheme = null;
     function redrawMermaidIfThemeChanged() {
-        const theme = mermaidTheme();
-        if (theme === lastMermaidTheme) return;
-        lastMermaidTheme = theme;
+        if (mermaidThemeInUse === null || mermaidTheme() === mermaidThemeInUse) return;
         const article = document.getElementById("content");
-        if (!window.mermaid || !article || !article.querySelector("pre.mermaid")) return;
+        if (!mermaidLib() || !article || !article.querySelector("pre.mermaid")) return;
         initMermaid();
         runMermaid(article);
     }

@@ -146,6 +146,55 @@ final class PreviewControllerTests: XCTestCase {
         XCTAssertNil(controller.errorBanner)
     }
 
+    /// Repeated WebContent crashes stop auto-reloading and surface a banner.
+    func test_contentCrashLoopIsCapped() throws {
+        let file = tempDir.appendingPathComponent("doc.md")
+        try "# Hello\n".write(to: file, atomically: true, encoding: .utf8)
+        let controller = PreviewController(fileURL: file)
+        for _ in 0..<3 { controller.webViewWebContentProcessDidTerminate(controller.webView) }
+        XCTAssertNil(controller.errorBanner)
+        controller.webViewWebContentProcessDidTerminate(controller.webView)
+        XCTAssertNotNil(controller.errorBanner)
+    }
+
+    /// Menu commands are broadcast to every window; a controller whose window
+    /// isn't key (here: no window at all) must ignore them.
+    func test_menuCommandsOnlyActInTheKeyWindow() throws {
+        let file = tempDir.appendingPathComponent("doc.md")
+        try "# Hello\n".write(to: file, atomically: true, encoding: .utf8)
+        let controller = PreviewController(fileURL: file)
+        NotificationCenter.default.post(name: .toggleOutline, object: nil)
+        NotificationCenter.default.post(name: .findInPreview, object: nil)
+        XCTAssertFalse(controller.showOutline)
+        XCTAssertFalse(controller.showFindBar)
+    }
+
+    /// The positive side of the command table: in the key window every routed
+    /// command reaches its handler.
+    func test_menuCommandsDispatchInTheKeyWindow() async throws {
+        let file = tempDir.appendingPathComponent("doc.md")
+        try "# Hello\n".write(to: file, atomically: true, encoding: .utf8)
+        let controller = PreviewController(fileURL: file)
+        let window = KeyWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
+                               styleMask: [.titled], backing: .buffered, defer: true)
+        window.contentView = controller.webView
+        let zoomKey = "MarkeeZoomLevel"
+        let savedZoom = UserDefaults.standard.object(forKey: zoomKey)
+        defer { UserDefaults.standard.set(savedZoom, forKey: zoomKey) }
+        UserDefaults.standard.set(1.0, forKey: zoomKey)
+
+        for name: Notification.Name in [.toggleOutline, .toggleFloatOnTop, .findNext, .zoomIn] {
+            NotificationCenter.default.post(name: name, object: nil)
+        }
+        try await Task.sleep(for: .milliseconds(100))
+
+        XCTAssertTrue(controller.showOutline)
+        XCTAssertTrue(controller.pinState.floatOnTop)
+        XCTAssertTrue(controller.showFindBar)          // ⌘G with no query reveals the bar
+        XCTAssertEqual(UserDefaults.standard.double(forKey: zoomKey), 1.1)
+        withExtendedLifetime(window) {}
+    }
+
     /// A `scrollSection` with no id (null) clears `currentHeadingID`.
     func test_scrollSectionMessage_withNoID_clears() throws {
         let file = tempDir.appendingPathComponent("doc.md")
@@ -178,6 +227,10 @@ private final class FakeMessage: WKScriptMessage {
     override var name: String { _name }
     override var body: Any { _body }
     override var frameInfo: WKFrameInfo { _frame }
+}
+
+private final class KeyWindow: NSWindow {
+    override var isKeyWindow: Bool { true }
 }
 
 private final class FakeFrameInfo: WKFrameInfo {
