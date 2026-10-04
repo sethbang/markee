@@ -11,8 +11,8 @@ All notable changes to Markee are documented here. Format roughly follows
   Nothing is feature-gated; supporting only silences the throttled nudges. A key
   is redeemed once through Polar's activation endpoint and covers up to 3 Macs;
   free a slot any time from the Polar customer portal. Built and tested, but
-  dormant in 1.1.0 — no organization is configured, so the heart, the menu
-  entries, and the monthly support doc stay hidden until go-live.
+  switched off until it launches — no organization is configured, so the heart,
+  the menu entries, and the monthly support doc stay hidden.
 - **Developer Debug menu** (`MARKEE_DEV_TOOLS=1`) for exercising licensing
   state locally without contacting Polar.
 
@@ -27,6 +27,8 @@ All notable changes to Markee are documented here. Format roughly follows
 - Quick Look previews and thumbnails block all remote loads.
 - Updates must carry Markee's Developer ID signature before they're installed.
 - Workspace root inference never widens to your home folder or above.
+- A symlink inside the workspace can no longer be used to display a file from
+  outside it (via an encoded `..` path).
 - Vendored JS is re-verified against its SHA-256 manifest on every build;
   CI actions are pinned by commit and releases require a commit on `main`.
 
@@ -37,7 +39,9 @@ All notable changes to Markee are documented here. Format roughly follows
   re-syncs the checkbox when it can't apply.
 - Closed windows were never freed (WebView, file watcher and observers leaked).
 - Legacy-encoded (Windows-1252/Latin-1) files no longer render as CJK mojibake.
-- Exported HTML no longer gets dark code blocks, and keeps its math fonts.
+- Exported HTML always uses the light theme, keeps its math fonts, and is
+  titled with the file name.
+- A heading named "Toast" or "Content" no longer breaks the page layout.
 - Open in Editor no longer freezes the UI on slow shell startup files.
 - Footnote and in-page `#links` scroll instead of breaking the preview;
   links to images/PDFs in the workspace open in their default app.

@@ -101,6 +101,25 @@ final class SchemeHandlerTests: XCTestCase {
         XCTAssertNil(resolveSandboxed(root: tempDir, requestPath: "/link.txt"))
     }
 
+    /// `resolvingSymlinksInPath` leaves the last component unresolved when the
+    /// path holds `..`, so `x/../link.txt` slipped past the check. WebKit keeps
+    /// `%2F` encoded and `URL.path` decodes it, so a document can send this.
+    func test_outwardSymlinkBehindDotDotSegment_returnsNil() throws {
+        try Data("leaked".utf8).write(to: outsideDir.appendingPathComponent("secret.txt"))
+        try FileManager.default.createSymbolicLink(
+            at: tempDir.appendingPathComponent("link.txt"),
+            withDestinationURL: outsideDir.appendingPathComponent("secret.txt"))
+        try FileManager.default.createDirectory(
+            at: tempDir.appendingPathComponent("sub"), withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(
+            at: tempDir.appendingPathComponent("dirlink"), withDestinationURL: tempDir.appendingPathComponent("sub"))
+        for s in ["markee-doc://doc/x%2F..%2Flink.txt", "markee-doc://doc/sub%2F..%2Flink.txt",
+                  "markee-doc://doc/dirlink%2F..%2Flink.txt"] {
+            let path = URL(string: s)!.path
+            XCTAssertNil(resolveSandboxed(root: tempDir, requestPath: path), s)
+        }
+    }
+
     func test_symlinkPointingInsideRoot_resolves() throws {
         let real = tempDir.appendingPathComponent("inside.txt")
         try Data().write(to: real)

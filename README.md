@@ -57,7 +57,7 @@ in Editor**, and your editor opens at that line.
   window (⌘,) to override the theme, accent color, base font size, and load a
   custom CSS file.
 - Free and fully featured; nothing is gated. (An optional supporter license is
-  built in but switched off in 1.1.0 — there are no nudges until it launches.)
+  built in but switched off for now — there are no nudges until it launches.)
 - CLI launcher: `markee path/to/notes.md`.
 
 ## Install

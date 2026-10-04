@@ -73,7 +73,7 @@ two Quick Look extensions under `Contents/PlugIns/`.
     heart. Activation hits Polar's public (unauthenticated) customer-portal
     endpoint, so no API key ships in the app. `SupportConfig` reads
     `MARKEE_POLAR_BASE_URL`/`MARKEE_POLAR_ORG_ID` from the environment to point
-    a local build at the Polar sandbox for testing. **Dormant in v1.1.0:**
+    a local build at the Polar sandbox for testing. **Dormant until go-live:**
     `SupportConfig.productionOrganizationID` is empty while the Polar org is in
     test mode, which hides the whole supporter surface (heart, menu items,
     monthly doc); restore it with the `/support` redirect and footer link at

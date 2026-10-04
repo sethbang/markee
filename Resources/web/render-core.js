@@ -128,7 +128,7 @@
     // Scheme-qualified URLs and email addresses are untouched.
     function gfmAutolinkPlugin(md) {
         if (md.linkify && typeof md.linkify.set === "function") md.linkify.set({ fuzzyLink: true });
-        const KEEP = /^(?:[a-z][a-z0-9+.-]*:|www\.)|@/i;
+        const KEEP = /^(?:[a-z][a-z0-9+.-]*:|www\.)/i;
         md.core.ruler.push("markee_gfm_autolinks", function (state) {
             for (const block of state.tokens) {
                 if (block.type !== "inline" || !block.children) continue;
@@ -138,7 +138,8 @@
                     const t = kids[i];
                     const text = kids[i + 1], close = kids[i + 2];
                     if (t.type === "link_open" && t.markup === "linkify" && text && text.type === "text"
-                        && close && close.type === "link_close" && !KEEP.test(text.content)) {
+                        && close && close.type === "link_close" && !KEEP.test(text.content)
+                        && !/^mailto:/i.test(t.attrGet("href") || "")) {
                         out.push(text);
                         i += 2;
                         continue;

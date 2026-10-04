@@ -154,14 +154,16 @@ public final class DocSchemeHandler: NSObject, WKURLSchemeHandler {
 ///
 /// `requestPath` must already be percent-DECODED (as `URL.path` is). It is not
 /// decoded again: a second decode made a file literally named `100%25.png`
-/// unreachable. Encoded traversal (`%2e%2e`) is still blocked because `URL.path`
-/// decodes it to `..`, which symlink-resolution then collapses before the
-/// boundary check. The check uses a trailing slash so the sibling-dir attack is
-/// blocked; the exact-equal allowance covers a request for the root itself.
+/// unreachable. Encoded traversal (`%2e%2e`, `%2F`) still arrives as `..`
+/// segments, which are collapsed lexically BEFORE symlinks are resolved:
+/// `resolvingSymlinksInPath` skips the last component of a path containing
+/// `..`, so `x/../link-out` would otherwise pass. The check uses a trailing
+/// slash so the sibling-dir attack is blocked; the exact-equal allowance covers
+/// a request for the root itself.
 public func resolveSandboxed(root: URL, requestPath: String) -> URL? {
     var path = requestPath
     while path.hasPrefix("/") { path.removeFirst() }
-    let candidate = root.appendingPathComponent(path).resolvingSymlinksInPath()
+    let candidate = root.appendingPathComponent(path).standardizedFileURL.resolvingSymlinksInPath()
     let rootResolvedPath = root.resolvingSymlinksInPath().path
     let boundary = rootResolvedPath + "/"
     if candidate.path == rootResolvedPath { return candidate }

@@ -90,8 +90,6 @@ final class WorkspaceModel: ObservableObject {
         return "\(scheme)://doc/"
     }
 
-    /// Drops the previous root's indexes immediately so nothing (wiki-links,
-    /// search) resolves against them while the new walk runs.
     /// Percent-encode each component of a root-relative path for a
     /// `markee-doc://` URL, so `#`, `?` and `%` in names (`C# notes/`) don't
     /// truncate or corrupt it.
@@ -103,6 +101,8 @@ final class WorkspaceModel: ObservableObject {
             .joined(separator: "/")
     }
 
+    /// Drops the previous root's indexes immediately so nothing (wiki-links,
+    /// search) resolves against them while the new walk runs.
     func setRoot(_ url: URL) {
         self.root = url.standardizedFileURL
         markdownFiles = []

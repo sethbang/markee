@@ -147,3 +147,8 @@ test("autolinks follow GFM: www. and schemes link, bare file names don't", () =>
     assert.doesNotMatch(html, /href="http:\/\/example\.com"/);
     assert.match(html, /read notes\.md, README\.md and example\.com\./);
 });
+
+test("a bare domain with @ in its path stays plain text", () => {
+    const html = buildNodeRenderer().render("See medium.com/@user and github.com/foo.\n");
+    assert.doesNotMatch(html, /<a /);
+});

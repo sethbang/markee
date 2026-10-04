@@ -17,6 +17,7 @@
     const errMsg = (e) => (e && e.message) ? e.message : String(e);
 
     let isReadOnly = false;        // set per-render; gates navigation + chrome
+    let currentFileName = "";      // set per-render; the export's <title>
 
     const showToast = (msg) => {
         const t = document.getElementById("toast");
@@ -240,6 +241,8 @@
         const prevScroll = window.scrollY;
         const prevHeight = document.documentElement.scrollHeight;
 
+        currentFileName = payload.fileName || "";
+
         // Per-render slug counter for heading-id de-duplication
         const slugCount = new Map();
 
@@ -276,9 +279,20 @@
         // Assign ids to headings + build outline
         const items = [];
         const headingEls = Array.from(article.querySelectorAll("h1, h2, h3, h4, h5, h6"));
-        // Explicit ids ({#id}, raw HTML) are taken first so generated slugs
-        // never duplicate them.
-        article.querySelectorAll("[id]").forEach((el) => slugCount.set(el.id, 1));
+        // The page's own ids (#content, #toast, …) are reserved: a "## Toast"
+        // heading taking id="toast" picked up the toast's fixed-position CSS
+        // and was overwritten by the next toast. Explicit document ids that
+        // collide are dropped; the rest are taken before slugging so generated
+        // slugs never duplicate them.
+        const pageIds = new Set();
+        document.querySelectorAll("[id]").forEach((el) => {
+            if (el === article || !article.contains(el)) pageIds.add(el.id);
+        });
+        article.querySelectorAll("[id]").forEach((el) => {
+            if (pageIds.has(el.id)) el.removeAttribute("id");
+            else slugCount.set(el.id, 1);
+        });
+        pageIds.forEach((id) => slugCount.set(id, 1));
         // Markdown headings carry data-line from render-core; raw-HTML <hN>
         // tags have no source map, so their outline entry has no line.
         headingEls.forEach((h) => {
@@ -447,6 +461,8 @@
         const mermaid = mermaidLib();
         if (!mermaid) return;
         mermaidQueue = mermaidQueue.then(() => {
+            // The theme may have changed while no diagram was on screen.
+            if (mermaidTheme() !== mermaidThemeInUse) initMermaid();
             article.querySelectorAll("pre.mermaid").forEach((el) => {
                 // Mermaid replaces the source with its SVG; keep the source so
                 // a theme change can redraw the diagram.
@@ -647,11 +663,11 @@
 
         // Build standalone HTML
         const head = `<!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escapeHtml(document.title || "Markee export")}</title>
+<title>${escapeHtml(currentFileName || "Markee export")}</title>
 <style>
 ${cssParts.join("\n\n")}
 </style>

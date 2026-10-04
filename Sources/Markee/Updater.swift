@@ -385,6 +385,7 @@ final class Updater {
             try Self.stripQuarantine(stagedBundle)
             try Self.launchSwapHelper(newBundle: stagedBundle, installPath: installPath)
         } catch {
+            try? FileManager.default.removeItem(at: stagedBundle.deletingLastPathComponent())
             progress.close()
             presentManualFallback(release, reason: error.localizedDescription)
             return
