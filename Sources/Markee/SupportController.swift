@@ -3,7 +3,7 @@ import Combine
 import Foundation
 
 enum SupportConfig {
-    // Deliberately empty for v1.1.0: the Polar organization is still in test
+    // Deliberately empty until go-live: the Polar organization is still in test
     // mode pending identity verification, so a live checkout would take no
     // money. Empty keeps isConfigured() false, which makes the heart, the menu
     // items, and the monthly support doc all dormant — the entire supporter

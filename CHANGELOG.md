@@ -6,15 +6,12 @@ All notable changes to Markee are documented here. Format roughly follows
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-10-03
+
 ### Added
-- **Optional Polar.sh supporter license** with a local-only usage-stats drawer.
-  Nothing is feature-gated; supporting only silences the throttled nudges. A key
-  is redeemed once through Polar's activation endpoint and covers up to 3 Macs;
-  free a slot any time from the Polar customer portal. Built and tested, but
-  switched off until it launches — no organization is configured, so the heart,
-  the menu entries, and the monthly support doc stay hidden.
-- **Developer Debug menu** (`MARKEE_DEV_TOOLS=1`) for exercising licensing
-  state locally without contacting Polar.
+- **Files sidebar context menu**: right-click a folder for **Set as Workspace
+  Root** (any folder containing the open file), or anywhere in the panel for
+  Expand All / Collapse All.
 
 ### Security
 - The preview page now has a strict Content-Security-Policy: document script
@@ -39,8 +36,8 @@ All notable changes to Markee are documented here. Format roughly follows
   re-syncs the checkbox when it can't apply.
 - Closed windows were never freed (WebView, file watcher and observers leaked).
 - Legacy-encoded (Windows-1252/Latin-1) files no longer render as CJK mojibake.
-- Exported HTML always uses the light theme, keeps its math fonts, and is
-  titled with the file name.
+- Exported HTML keeps a light page in a dark-mode browser, keeps its math
+  fonts, and is titled with the file name.
 - A heading named "Toast" or "Content" no longer breaks the page layout.
 - Open in Editor no longer freezes the UI on slow shell startup files.
 - Footnote and in-page `#links` scroll instead of breaking the preview;
@@ -49,8 +46,10 @@ All notable changes to Markee are documented here. Format roughly follows
   heading anchors, Mermaid following the theme override, Find ignoring
   KaTeX's hidden MathML, outline lines with raw-HTML headings, `#`/`%` in
   workspace paths, deleted-file detection, WebContent crash recovery, the
-  CLI opening multiple files, and the titlebar filename overlapping the
-  back/forward buttons.
+  CLI opening multiple files, the titlebar filename overlapping the
+  back/forward buttons, Quick Look hanging on a stalled render, Finder
+  thumbnails following dark mode, `[[wiki-links]]` picking the shallowest of
+  two same-named files, and the updater never swapping over a running app.
 
 ### Changed
 - Terminal editors (`nvim`, `vim`, `hx`) are no longer auto-detected for
@@ -59,8 +58,7 @@ All notable changes to Markee are documented here. Format roughly follows
   plain text; it no longer claims `.mmd` (Mermaid) files.
 - The Files sidebar starts with folders collapsed, revealing only the folders
   that lead to the open file; folders you expand stay open as you navigate.
-  Right-click in it for Expand All / Collapse All, or on a folder for **Set as
-  Workspace Root** (any folder containing the open file).
+  Expanding everything in a large folder no longer freezes the app.
 - `just app` no longer replaces `/Applications/Markee.app`; use `just install`.
 - Updated bundled libraries: markdown-it 15.0.2 (includes fixes for
   quadratic-time parsing), markdown-it-deflist 4.0.0, markdown-it-attrs

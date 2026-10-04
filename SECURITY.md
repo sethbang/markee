@@ -49,7 +49,9 @@ Inference never climbs to your home folder, anything above it, or `/` — a
 dotfiles repo at `~` doesn't make your whole home folder the workspace — and a
 root that *is* one of those (a file saved directly in `~`) is indexed one level
 deep only.
-*File ▸ Open Folder as Workspace…* sets it explicitly. Images and links can
+*File ▸ Open Folder as Workspace…* sets it explicitly, and right-clicking a
+folder in the Files sidebar (*Set as Workspace Root*) narrows it to any folder
+that still contains the open document. Images and links can
 reference any file under that root via `markee-doc://doc/...`; nothing outside
 it is served (path traversal, percent-encoded `..` and symlink escapes are
 blocked).

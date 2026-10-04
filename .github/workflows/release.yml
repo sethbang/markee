@@ -144,13 +144,19 @@ jobs:
         id: changelog
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          NOTES=$(awk -v ver="$VERSION" '
-            $0 ~ "^## \\[" ver "\\]" { flag=1; next }
-            flag && /^## \[/ { exit }
-            flag { print }
-          ' CHANGELOG.md)
-          if [ -z "$(printf "%s" "$NOTES" | tr -d "[:space:]")" ]; then
-            NOTES="See [CHANGELOG.md](CHANGELOG.md) for details."
+          section() {
+            awk -v ver="$1" '
+              $0 ~ "^## \\[" ver "\\]" { flag=1; next }
+              flag && /^## \[/ { exit }
+              flag { print }
+            ' CHANGELOG.md
+          }
+          blank() { [ -z "$(printf "%s" "$1" | tr -d "[:space:]")" ]; }
+          NOTES=$(section "$VERSION")
+          # A pre-release (v1.2.0-rc.1) ships the notes of the version it previews.
+          if blank "$NOTES"; then NOTES=$(section "${VERSION%%-*}"); fi
+          if blank "$NOTES"; then
+            NOTES="See [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/main/CHANGELOG.md) for details."
           fi
           {
             echo "notes<<CHANGELOG_EOF"
