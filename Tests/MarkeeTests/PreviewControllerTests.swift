@@ -26,10 +26,7 @@ final class PreviewControllerTests: XCTestCase {
 
         XCTAssertNil(controller.currentHeadingID)
 
-        controller.userContentController(
-            WKUserContentController(),
-            didReceive: FakeMessage(name: "markee", body: ["kind": "scrollSection", "id": "setup"])
-        )
+        send(controller, ["kind": "scrollSection", "id": "setup"])
 
         XCTAssertEqual(controller.currentHeadingID, "setup")
     }
@@ -56,21 +53,22 @@ final class PreviewControllerTests: XCTestCase {
         let controller = PreviewController(fileURL: file)
         let body: [String: Any] = ["kind": "scrollSection", "id": "x"]
 
-        controller.userContentController(
-            WKUserContentController(),
-            didReceive: FakeMessage(name: "markee", body: body, mainFrame: false))
-        controller.userContentController(
-            WKUserContentController(),
-            didReceive: FakeMessage(name: "markee", body: body, frameURL: "https://evil.example/"))
+        send(controller, body, mainFrame: false)
+        send(controller, body, frameURL: "https://evil.example/")
 
         XCTAssertNil(controller.currentHeadingID)
     }
 
+    /// Deliver a bridge message as if from `frameURL` (the template's main
+    /// frame by default).
+    private func send(_ controller: PreviewController, _ body: [String: Any], mainFrame: Bool = true,
+                      frameURL: String = "markee-app://app/template.html") {
+        controller.receiveBridgeMessage(name: "markee", isMainFrame: mainFrame,
+                                        frameURL: URL(string: frameURL), body: body)
+    }
+
     private func toggle(_ controller: PreviewController, line: Int, checked: Bool) {
-        controller.userContentController(
-            WKUserContentController(),
-            didReceive: FakeMessage(name: "markee",
-                                    body: ["kind": "taskToggle", "line": line, "checked": checked]))
+        send(controller, ["kind": "taskToggle", "line": line, "checked": checked])
     }
 
     func test_taskToggle_writesThroughSymlinkToTarget() throws {
@@ -140,9 +138,7 @@ final class PreviewControllerTests: XCTestCase {
         try FileManager.default.createSymbolicLink(at: link, withDestinationURL: real)
         let controller = PreviewController(fileURL: link.appendingPathComponent("a.md"))
 
-        controller.userContentController(
-            WKUserContentController(),
-            didReceive: FakeMessage(name: "markee", body: ["kind": "navigate", "path": "/b%20c.md"]))
+        send(controller, ["kind": "navigate", "path": "/b%20c.md"])
 
         XCTAssertEqual(controller.fileURL.path, link.appendingPathComponent("b c.md").standardizedFileURL.path)
         XCTAssertNil(controller.errorBanner)
@@ -204,45 +200,12 @@ final class PreviewControllerTests: XCTestCase {
         let controller = PreviewController(fileURL: file)
         controller.currentHeadingID = "setup"
 
-        controller.userContentController(
-            WKUserContentController(),
-            didReceive: FakeMessage(name: "markee", body: ["kind": "scrollSection"])
-        )
+        send(controller, ["kind": "scrollSection"])
 
         XCTAssertNil(controller.currentHeadingID)
     }
 }
 
-/// WKScriptMessage has no public initializer. This is the standard test
-/// workaround — a minimal subclass that overrides `name`, `body` and the
-/// sending frame (the template's main frame by default).
-private final class FakeMessage: WKScriptMessage {
-    private let _name: String
-    private let _body: Any
-    private let _frame: WKFrameInfo
-    init(name: String, body: Any, mainFrame: Bool = true,
-         frameURL: String = "markee-app://app/template.html") {
-        self._name = name; self._body = body
-        self._frame = FakeFrameInfo(mainFrame: mainFrame, url: URL(string: frameURL)!)
-        super.init()
-    }
-    override var name: String { _name }
-    override var body: Any { _body }
-    override var frameInfo: WKFrameInfo { _frame }
-}
-
 private final class KeyWindow: NSWindow {
     override var isKeyWindow: Bool { true }
-}
-
-private final class FakeFrameInfo: WKFrameInfo {
-    private let _mainFrame: Bool
-    private let _request: URLRequest
-    init(mainFrame: Bool, url: URL) {
-        self._mainFrame = mainFrame
-        self._request = URLRequest(url: url)
-        super.init()
-    }
-    override var isMainFrame: Bool { _mainFrame }
-    override var request: URLRequest { _request }
 }

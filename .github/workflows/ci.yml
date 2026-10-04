@@ -59,6 +59,15 @@ jobs:
       - name: Test
         run: just test
 
+      # A crashed xctest only reports "signal code N": re-run the Swift tests
+      # under lldb to print every thread's backtrace at the crash.
+      - name: Backtrace a test crash
+        if: failure()
+        run: |
+          XCTEST=$(xcrun --find xctest)
+          BUNDLE=$(find .build -name 'MarkeePackageTests.xctest' -maxdepth 4 | head -1)
+          lldb --batch -o run -o "thread backtrace all" -k "thread backtrace all" -k quit -- "$XCTEST" "$BUNDLE" 2>&1 | tail -400
+
       - name: Build app bundle
         run: just app
 

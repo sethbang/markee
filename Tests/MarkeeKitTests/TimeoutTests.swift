@@ -30,7 +30,7 @@ final class TimeoutTests: XCTestCase {
         let start = Date()
         do {
             _ = try await withTimeout(seconds: 0.2) { () async throws -> Int in
-                Thread.sleep(forTimeInterval: 2)   // non-cooperative
+                usleep(2_000_000)   // non-cooperative: blocks, never checks cancellation
                 return 1
             }
             XCTFail("expected a timeout error")

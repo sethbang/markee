@@ -534,12 +534,20 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
     // MARK: - WKScriptMessageHandler
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        // Only the template's own main frame may drive the bridge (task
-        // write-back, clipboard, navigation) — never an iframe or a foreign page.
-        guard message.name == "markee",
-              message.frameInfo.isMainFrame,
-              message.frameInfo.request.url.map(NavigationPolicy.isTemplate) == true,
-              let decoded = BridgeMessage(body: message.body) else { return }
+        receiveBridgeMessage(name: message.name, isMainFrame: message.frameInfo.isMainFrame,
+                             frameURL: message.frameInfo.request.url, body: message.body)
+    }
+
+    /// The bridge's trust check, taking the sending frame as plain values so
+    /// tests never fabricate WebKit objects (a hand-made WKFrameInfo crashes
+    /// in its dealloc on macOS 26). Only the template's own main frame may
+    /// drive the bridge (task write-back, clipboard, navigation) — never an
+    /// iframe or a foreign page.
+    func receiveBridgeMessage(name: String, isMainFrame: Bool, frameURL: URL?, body: Any) {
+        guard name == "markee",
+              isMainFrame,
+              frameURL.map(NavigationPolicy.isTemplate) == true,
+              let decoded = BridgeMessage(body: body) else { return }
         handle(decoded)
     }
 
