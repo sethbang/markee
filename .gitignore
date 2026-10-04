@@ -36,3 +36,16 @@ docs/superpowers/
 *.afdesign
 
 .DS_Store
+
+# Site design sources / retired assets: kept locally, never published or tracked.
+site/img/a-chain-link.svg
+site/img/a-circular-refresh-arrow-looping-around-.svg
+site/img/a-magnifying-glass-over-a-single-page-of.svg
+site/img/a-page-of-text-lines-with-a-small-clock-.svg
+site/img/a-pair-of-double-square-brackets-framing.svg
+site/img/a-rounded-shield-with-a-checkmark.svg
+site/img/a-sheet-of-paper-marked-with-angle-brack.svg
+site/img/a-terminal-window-with-a-command-prompt-.svg
+site/img/radar.svg
+site/img/feature-editor-dark.png
+site/img/feature-editor-light.png

@@ -4,12 +4,18 @@ import WebKit
 /// Serves files from the app bundle's Resources/web/ directory.
 /// URLs look like: markee-app://app/template.html, markee-app://app/vendor/katex/katex.min.css
 public final class BundleSchemeHandler: NSObject, WKURLSchemeHandler {
-    public static let scheme = "markee-app"
+    nonisolated public static let scheme = "markee-app"
     private let webRoot: URL
 
     public override init() {
         let resources = Bundle.main.resourceURL ?? Bundle.main.bundleURL
         self.webRoot = resources.appendingPathComponent("web", isDirectory: true)
+        super.init()
+    }
+
+    /// Serve from an explicit directory (tests point this at `Resources/web`).
+    public init(webRoot: URL) {
+        self.webRoot = webRoot
         super.init()
     }
 
@@ -39,7 +45,6 @@ public final class BundleSchemeHandler: NSObject, WKURLSchemeHandler {
                 headerFields: [
                     "Content-Type": mime,
                     "Content-Length": String(data.count),
-                    "Access-Control-Allow-Origin": "*",
                 ]
             ) else {
                 task.didFailWithError(URLError(.cannotParseResponse)); return
@@ -57,7 +62,7 @@ public final class BundleSchemeHandler: NSObject, WKURLSchemeHandler {
                 task.didFailWithError(URLError(.cannotParseResponse)); return
             }
             task.didReceive(response)
-            task.didReceive(Data("Not found: \(fileURL.path)".utf8))
+            task.didReceive(Data("Not found".utf8))
             task.didFinish()
         }
     }
@@ -85,7 +90,7 @@ public final class BundleSchemeHandler: NSObject, WKURLSchemeHandler {
 /// is no workspace, so `docRoot` is the previewed file's own directory.
 /// URLs look like: markee-doc://doc/image.png  → <docRoot>/image.png
 public final class DocSchemeHandler: NSObject, WKURLSchemeHandler {
-    public static let scheme = "markee-doc"
+    nonisolated public static let scheme = "markee-doc"
     public private(set) var docRoot: URL
 
     public init(docRoot: URL) {
@@ -142,20 +147,23 @@ public final class DocSchemeHandler: NSObject, WKURLSchemeHandler {
 }
 
 /// Resolve a request path against `root` and confirm the result stays inside.
-/// Returns nil on any escape — `..`, percent-encoded `%2e%2e`, symlinks pointing
-/// out, or boundary-attack siblings (`/notes_sibling` against root `/notes`).
-/// Leading slashes are stripped, so a leading-slash path is treated as relative
-/// to root (it does not escape; a non-existent target simply 404s downstream).
+/// Returns nil on any escape — `..`, symlinks pointing out, or boundary-attack
+/// siblings (`/notes_sibling` against root `/notes`). Leading slashes are
+/// stripped, so a leading-slash path is treated as relative to root (it does
+/// not escape; a non-existent target simply 404s downstream).
 ///
-/// Path is URL-decoded once, then appended to root, then symlink-resolved on
-/// both sides. The boundary check uses a trailing slash so the sibling-dir
-/// attack is blocked. The exact-equal allowance covers the root-itself case
-/// (rare but possible if a request asks for the root directory).
+/// `requestPath` must already be percent-DECODED (as `URL.path` is). It is not
+/// decoded again: a second decode made a file literally named `100%25.png`
+/// unreachable. Encoded traversal (`%2e%2e`, `%2F`) still arrives as `..`
+/// segments, which are collapsed lexically BEFORE symlinks are resolved:
+/// `resolvingSymlinksInPath` skips the last component of a path containing
+/// `..`, so `x/../link-out` would otherwise pass. The check uses a trailing
+/// slash so the sibling-dir attack is blocked; the exact-equal allowance covers
+/// a request for the root itself.
 public func resolveSandboxed(root: URL, requestPath: String) -> URL? {
     var path = requestPath
     while path.hasPrefix("/") { path.removeFirst() }
-    let decoded = path.removingPercentEncoding ?? path
-    let candidate = root.appendingPathComponent(decoded).resolvingSymlinksInPath()
+    let candidate = root.appendingPathComponent(path).standardizedFileURL.resolvingSymlinksInPath()
     let rootResolvedPath = root.resolvingSymlinksInPath().path
     let boundary = rootResolvedPath + "/"
     if candidate.path == rootResolvedPath { return candidate }

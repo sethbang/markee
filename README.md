@@ -56,8 +56,8 @@ in Editor**, and your editor opens at that line.
 - Light + dark themes, following `prefers-color-scheme`, plus a **Preferences**
   window (⌘,) to override the theme, accent color, base font size, and load a
   custom CSS file.
-- **Optional supporter license** — Markee is free and fully featured; nothing is
-  gated. Supporting only quiets an occasional nudge.
+- Free and fully featured; nothing is gated. (An optional supporter license is
+  built in but switched off for now — there are no nudges until it launches.)
 - CLI launcher: `markee path/to/notes.md`.
 
 ## Install
@@ -74,13 +74,14 @@ with a double-click — no Gatekeeper warning, no right-click workaround needed.
 ### From source
 
 ```sh
-just fetch-vendor   # one-time: pinned downloads of markdown-it, KaTeX, highlight.js, Mermaid
-just app            # builds Markee.app at the repo root
-just run            # builds + opens
-just install        # copies to /Applications
+just fetch-vendor   # pinned downloads of markdown-it, KaTeX, highlight.js, Mermaid
+just app            # builds Markee.app at the repo root (never touches /Applications)
+just run            # builds + opens the repo-root build
+just install        # builds, then replaces /Applications/Markee.app
 ```
 
-Subsequent `just app` invocations skip the vendor fetch (sentinel-based). Run `just` to list every recipe.
+Every build re-verifies the vendored files against `scripts/vendor.sha256`;
+already-present files aren't downloaded again. Run `just` to list every recipe.
 
 ## Use
 
@@ -122,6 +123,8 @@ it explicitly.
 | ⇧⌘E | Export PDF |
 | ⌥⌘E | Open in Editor at current heading |
 | ⇧⌘C | Copy Markdown source |
+| ⌥⌘C | Copy reflowed Markdown (soft-wrapped paragraphs unwrapped) |
+| ⇧⌥⌘C | Copy as rendered plain text |
 | ⇧⌘R | Reveal in Finder |
 | ⌘F | Find in preview |
 | ⌘G / ⇧⌘G | Find next / previous |
@@ -134,10 +137,11 @@ Markee auto-detects the first available editor from this list on your `PATH`
 (via your login shell, so Homebrew / fnm / asdf entries work):
 
 ```
-cursor → code → zed → subl → mate → mvim → hx
+cursor → code → zed → subl → mate → mvim
 ```
 
-Override by setting a preference:
+Override it in **Markee ▸ Settings ▸ General ▸ Editor**, or with a preference
+(a bare command name, not a path):
 
 ```sh
 defaults write com.markee.preview editor "zed"
@@ -145,20 +149,25 @@ defaults write com.markee.preview editor "zed"
 
 For each editor, Markee constructs the right "jump to line" syntax —
 `code -g path:line:col`, `zed path:line:col`, `subl path:line`,
-`mate -l line path`, `mvim +line path`, `hx path:line`. The full list of
-supported editors is in `Sources/Markee/EditorLauncher.swift`.
+`mate -l line path`, `mvim +line path`. The full list of supported editors is
+in `Sources/Markee/EditorLauncher.swift`. Terminal editors (`nvim`, `vim`,
+`hx`, …) aren't supported: Markee launches the editor without a terminal, so
+use a GUI build such as `mvim`.
 
 ## Develop
 
 ```sh
 just test         # swift test + node --test (Swift + JS)
 just test-swift   # Swift unit tests (XCTest)
-just test-js      # JS pure-helper + render-snapshot + wiki-link tests
+just test-js      # JS helper, render-snapshot, source-line, wiki-link and reflow tests
 just clean        # nuke .build, Markee.app, and Resources/web/vendor
+just dev          # launch with the Debug menu (MARKEE_DEV_TOOLS=1) and forced supporter state
 just reset        # wipe local state + relaunch a fresh, un-licensed install
 ```
 
-168 tests passing at HEAD (131 Swift + 37 JS).
+Swift tests need full Xcode (XCTest isn't in the Command Line Tools): if
+`swift test` reports `no such module 'XCTest'`, run it with
+`DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`.
 
 ### Project layout
 
@@ -170,9 +179,10 @@ Sources/MarkeeKit/     Shared library: renderer, scheme handlers, file reader
 Sources/MarkeeQuickLookPreview/    Quick Look preview extension (.appex)
 Sources/MarkeeQuickLookThumbnail/  Quick Look thumbnail extension (.appex)
 Resources/web/         HTML/JS/CSS shipped into the bundle
-  template.html        Loads vendor + util + render-core + app
+  template.html        Loads vendor + util + render-core + reflow + app (strict CSP)
   app.js               Renderer glue, scroll preservation, message bridge
-  render-core.js       markdown-it pipeline (also used by Node snapshot tests)
+  render-core.js       markdown-it pipeline + front matter + source lines (also used by Node tests)
+  reflow.js            Copy Reflowed Markdown: unwraps soft-wrapped paragraphs
   util.js              Pure helpers (importable by Node tests)
   theme.css            Light/dark theme
   vendor/              Fetched at build time, not committed
@@ -189,8 +199,9 @@ docs/demo.md           README hero document
 The Swift side is a thin host: a `DocumentGroup`, a per-window
 `PreviewController`, a `FileWatcher` (kqueue with atomic-save reattach), and
 two custom URL scheme handlers — `markee-app://` for bundle assets and
-`markee-doc://` for the current document's directory (sandboxed against path
-traversal *and* symlink escape). All Markdown rendering happens in JavaScript
+`markee-doc://` for files under the workspace root (the enclosing git repo or
+docs folder; sandboxed against path traversal *and* symlink escape — see
+[SECURITY.md](SECURITY.md)). All Markdown rendering happens in JavaScript
 inside the WebView; Swift just streams the file's source into
 `window.markee.render({…})` after every change.
 
@@ -203,8 +214,9 @@ inside the WebView; Swift just streams the file's source into
 
 ## Status
 
-v1.0.0 — see [CHANGELOG.md](CHANGELOG.md) for the full release history.
-Developer ID signed and notarized.
+See [Releases](https://github.com/sethbang/markee/releases) for the current
+version and [CHANGELOG.md](CHANGELOG.md) for the full history. Developer ID
+signed and notarized.
 
 ## Contributing
 

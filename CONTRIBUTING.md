@@ -7,7 +7,7 @@ so we can talk through the approach before you spend time on it.
 ## Build + test
 
 ```sh
-just fetch-vendor   # one-time
+just fetch-vendor   # pinned vendored JS/CSS (re-verified on every build)
 just app            # builds Markee.app at the repo root
 just test           # Swift + JS tests
 ```
@@ -39,8 +39,8 @@ just test           # Swift + JS tests
 
 ## Releases (maintainer notes)
 
-- Bump `CFBundleShortVersionString` in `Resources/Info.plist` (and the two
-  Quick Look extension plists).
+- Bump `CFBundleShortVersionString` and `CFBundleVersion` in
+  `Resources/Info.plist` (and the two Quick Look extension plists).
 - Update `CHANGELOG.md` — promote `[Unreleased]` to a `## [X.Y.Z] — <date>`
   section. The release workflow extracts the matching section as the release
   notes by an exact `## [VERSION]` match.
@@ -49,3 +49,10 @@ just test           # Swift + JS tests
   tests, Developer-ID-signs, notarizes, staples, zips, and publishes the GitHub
   Release automatically. The tag must equal `CFBundleShortVersionString` in
   `Resources/Info.plist` or the workflow fails. Don't build or publish by hand.
+- The tagged commit must already be on `main` (merge first; after a squash
+  merge, tag the squashed commit on `main`, not the PR branch). The job waits
+  for approval in the `release` environment.
+- To dry-run the pipeline, tag `vX.Y.Z-rc.N` first: the suffix is ignored by
+  the version check, the release is marked as a pre-release (the updater and
+  the site only follow the latest full release), and its notes come from the
+  `## [X.Y.Z]` section.

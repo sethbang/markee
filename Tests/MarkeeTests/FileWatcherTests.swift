@@ -16,6 +16,24 @@ final class FileWatcherTests: XCTestCase {
         }
     }
 
+    /// A delete (not a save) is reported once; the file coming back reloads.
+    func test_deletedFileIsReportedThenRecovered() throws {
+        let file = tempDir.appendingPathComponent("gone.md")
+        try "x\n".write(to: file, atomically: false, encoding: .utf8)
+
+        let missing = XCTestExpectation(description: "missing reported")
+        let back = XCTestExpectation(description: "change fired after reappearing")
+        back.assertForOverFulfill = false
+        let watcher = FileWatcher(url: file, onMissing: { missing.fulfill() }, onChange: { back.fulfill() })
+        defer { watcher.cancel() }
+
+        Thread.sleep(forTimeInterval: 0.1)
+        try FileManager.default.removeItem(at: file)
+        wait(for: [missing], timeout: 3)
+        try "y\n".write(to: file, atomically: false, encoding: .utf8)
+        wait(for: [back], timeout: 4)
+    }
+
     /// Watcher fires when the file is written to in place.
     func test_inPlaceWriteFiresCallback() throws {
         let file = tempDir.appendingPathComponent("a.md")

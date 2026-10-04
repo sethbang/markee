@@ -24,13 +24,15 @@ final class PreviewViewController: NSViewController, QLPreviewingController {
             renderer.webView.autoresizingMask = [.width, .height]
             self.view.addSubview(renderer.webView)
 
-            renderer.loadTemplate()
             do {
-                try await renderer.waitUntilReady()
+                try await renderer.loadTemplate()
+                // Bounded: a template that never posts `ready` (broken bundle,
+                // JS throw before setup) must fail over to the system preview.
+                try await withTimeout(seconds: 10) { try await renderer.waitUntilReady() }
                 let source = try readFileWithFallback(at: url)
-                await renderer.render(source: source,
-                                      fileName: url.lastPathComponent,
-                                      readOnly: true)
+                try await renderer.render(source: source,
+                                          fileName: url.lastPathComponent,
+                                          readOnly: true)
                 handler(nil)
             } catch {
                 handler(error)

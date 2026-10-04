@@ -3,20 +3,23 @@ import Foundation
 /// Watches a single file path for writes and atomic-rename saves.
 /// Atomic-save handling: many editors (Vim, VSCode, Sublime) write to a
 /// temp file then rename it over the target. The original inode disappears,
-/// so we re-open the path after a short debounce.
+/// so we re-open the path after a short debounce. While the path is missing
+/// it's re-polled with backoff (0.15 s doubling to 2 s), and `onMissing` fires
+/// once if it's still gone after ~1 s (a delete or move, not a save).
 final class FileWatcher {
     private let url: URL
     private let onChange: () -> Void
+    private let onMissing: (() -> Void)?
     private let queue = DispatchQueue(label: "com.markee.filewatcher", qos: .utility)
 
     private var source: DispatchSourceFileSystemObject?
-    private var fd: Int32 = -1
     private var reattachItem: DispatchWorkItem?
     private var changeDebounce: DispatchWorkItem?
 
-    init(url: URL, onChange: @escaping () -> Void) {
+    init(url: URL, onMissing: (() -> Void)? = nil, onChange: @escaping () -> Void) {
         self.url = url
         self.onChange = onChange
+        self.onMissing = onMissing
         attach()
     }
 
@@ -48,7 +51,6 @@ final class FileWatcher {
                 self.scheduleReattach()
                 return
             }
-            self.fd = descriptor
             let s = DispatchSource.makeFileSystemObjectSource(
                 fileDescriptor: descriptor,
                 eventMask: [.write, .extend, .delete, .rename, .revoke, .attrib],
@@ -72,7 +74,10 @@ final class FileWatcher {
         }
     }
 
-    private func scheduleReattach() {
+    /// Attempts after which a still-missing file is reported (~1 s in).
+    private static let missingReportAttempt = 3
+
+    private func scheduleReattach(attempt: Int = 0) {
         reattachItem?.cancel()
         let item = DispatchWorkItem { [weak self] in
             guard let self else { return }
@@ -80,11 +85,15 @@ final class FileWatcher {
                 self.attach()
                 self.debouncedFire()
             } else {
-                self.scheduleReattach()
+                if attempt + 1 == Self.missingReportAttempt, let onMissing = self.onMissing {
+                    DispatchQueue.main.async { onMissing() }
+                }
+                self.scheduleReattach(attempt: attempt + 1)
             }
         }
         reattachItem = item
-        queue.asyncAfter(deadline: .now() + 0.15, execute: item)
+        let delay = min(0.15 * pow(2, Double(attempt)), 2.0)
+        queue.asyncAfter(deadline: .now() + delay, execute: item)
     }
 
     private func debouncedFire() {

@@ -37,4 +37,24 @@ final class WorkspaceSearchTests: XCTestCase {
         }
         XCTAssertEqual(WorkspaceSearch.rank(query: "match", candidates: c, limit: 5).count, 5)
     }
+
+    func test_ranking_filenameMatchIgnoresExtension() {
+        let c = [WorkspaceSearch.Candidate(url: u("/w/a.md"), name: "a.md", body: "x"),
+                 WorkspaceSearch.Candidate(url: u("/w/markdown-tips.md"), name: "markdown-tips.md", body: "x")]
+        XCTAssertTrue(WorkspaceSearch.rank(query: "md", candidates: c, limit: 10).isEmpty)
+        XCTAssertEqual(WorkspaceSearch.rank(query: "mark", candidates: c, limit: 10).map(\.name), ["markdown-tips.md"])
+    }
+
+    func test_search_seesEditsAfterCaching() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("search-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let f = dir.appendingPathComponent("n.md")
+        try "alpha".write(to: f, atomically: true, encoding: .utf8)
+        XCTAssertEqual(WorkspaceSearch.search(query: "alpha", files: [f]).count, 1)
+        try "beta".write(to: f, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(5)], ofItemAtPath: f.path)
+        XCTAssertEqual(WorkspaceSearch.search(query: "beta", files: [f]).count, 1)
+        XCTAssertEqual(WorkspaceSearch.search(query: "alpha", files: [f]).count, 0)
+    }
 }

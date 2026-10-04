@@ -88,3 +88,147 @@ final class GitHubReleaseTests: XCTestCase {
         XCTAssertEqual(release?.notes, "")
     }
 }
+
+/// Staged-bundle validation: the gate between a downloaded zip and replacing
+/// the running app.
+final class StagedBundleValidationTests: XCTestCase {
+    private var dir: URL!
+
+    override func setUpWithError() throws {
+        dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MarkeeStagedBundle-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: dir)
+    }
+
+    /// A minimal Markee.app; ad-hoc signed when `sign` is set.
+    private func makeBundle(id: String = "com.markee.test", version: String = "2.0.0", sign: Bool) throws -> URL {
+        let app = dir.appendingPathComponent("Markee.app")
+        let macos = app.appendingPathComponent("Contents/MacOS")
+        try FileManager.default.createDirectory(at: macos, withIntermediateDirectories: true)
+        try FileManager.default.copyItem(at: URL(fileURLWithPath: "/usr/bin/true"),
+                                         to: macos.appendingPathComponent("Markee"))
+        let plist: NSDictionary = [
+            "CFBundleIdentifier": id,
+            "CFBundleExecutable": "Markee",
+            "CFBundleShortVersionString": version,
+            "CFBundlePackageType": "APPL",
+        ]
+        plist.write(to: app.appendingPathComponent("Contents/Info.plist"), atomically: true)
+        if sign {
+            try Updater.runProcess("/usr/bin/codesign", ["--force", "--sign", "-", app.path])
+        }
+        return app
+    }
+
+    func test_productionRequirementRejectsAdHocBundle() throws {
+        let app = try makeBundle(id: "com.markee.preview", sign: true)
+        XCTAssertThrowsError(try Updater.validateStagedBundle(app, expectedVersion: AppVersion("2.0.0")!))
+    }
+
+    /// Guards the production requirement string itself: a real Developer-ID
+    /// release must pass, or every user's update would be refused.
+    func test_productionRequirementAcceptsSignedRelease() throws {
+        let installed = URL(fileURLWithPath: "/Applications/Markee.app")
+        guard let info = NSDictionary(contentsOf: installed.appendingPathComponent("Contents/Info.plist")),
+              let v = info["CFBundleShortVersionString"] as? String, let version = AppVersion(v),
+              (try? Updater.runProcess("/usr/bin/codesign", ["--verify", "-R=anchor apple generic", installed.path])) != nil
+        else { throw XCTSkip("no Developer-ID-signed Markee in /Applications") }
+        XCTAssertNoThrow(try Updater.validateStagedBundle(installed, expectedVersion: version))
+    }
+
+    func test_unsignedBundleIsRejected() throws {
+        let app = try makeBundle(sign: false)
+        XCTAssertThrowsError(try Updater.validateStagedBundle(
+            app, expectedVersion: AppVersion("2.0.0")!,
+            bundleID: "com.markee.test", requirement: #"identifier "com.markee.test""#))
+    }
+
+    func test_signedBundleMatchingRequirementIsAccepted() throws {
+        let app = try makeBundle(sign: true)
+        XCTAssertNoThrow(try Updater.validateStagedBundle(
+            app, expectedVersion: AppVersion("2.0.0")!,
+            bundleID: "com.markee.test", requirement: #"identifier "com.markee.test""#))
+    }
+
+    func test_versionOrBundleIDMismatchIsRejected() throws {
+        let app = try makeBundle(sign: true)
+        let req = #"identifier "com.markee.test""#
+        XCTAssertThrowsError(try Updater.validateStagedBundle(
+            app, expectedVersion: AppVersion("2.0.1")!, bundleID: "com.markee.test", requirement: req))
+        XCTAssertThrowsError(try Updater.validateStagedBundle(
+            app, expectedVersion: AppVersion("2.0.0")!, bundleID: "com.other", requirement: req))
+    }
+
+    /// Tampering after signing must fail strict validation.
+    func test_modifiedSignedBundleIsRejected() throws {
+        let app = try makeBundle(sign: true)
+        let plistURL = app.appendingPathComponent("Contents/Info.plist")
+        let plist = NSMutableDictionary(contentsOf: plistURL)!
+        plist["Injected"] = "yes"
+        plist.write(to: plistURL, atomically: true)
+        XCTAssertThrowsError(try Updater.validateStagedBundle(
+            app, expectedVersion: AppVersion("2.0.0")!,
+            bundleID: "com.markee.test", requirement: #"identifier "com.markee.test""#))
+    }
+}
+
+/// The bash swap helper, run for real against temp directories (relaunch
+/// stubbed with /usr/bin/true, PID of an already-exited process).
+final class SwapScriptTests: XCTestCase {
+    private var dir: URL!
+
+    override func setUpWithError() throws {
+        dir = FileManager.default.temporaryDirectory.appendingPathComponent("MarkeeSwap-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    }
+    override func tearDownWithError() throws { try? FileManager.default.removeItem(at: dir) }
+
+    private func deadPID() throws -> String {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/true")
+        try p.run(); p.waitUntilExit()
+        return String(p.processIdentifier)
+    }
+
+    private func runSwap(new: URL, dest: URL) throws -> Int32 {
+        let script = dir.appendingPathComponent("swap.sh")
+        try Updater.swapScript.write(to: script, atomically: true, encoding: .utf8)
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/bash")
+        p.arguments = [script.path, try deadPID(), new.path, dest.path, "/usr/bin/true"]
+        try p.run(); p.waitUntilExit()
+        return p.terminationStatus
+    }
+
+    private func makeApp(_ url: URL, marker: String) throws {
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        try marker.write(to: url.appendingPathComponent("marker"), atomically: true, encoding: .utf8)
+    }
+
+    func test_swapReplacesInstalledAppAndCleansUp() throws {
+        let staging = dir.appendingPathComponent("staging")
+        let new = staging.appendingPathComponent("Markee.app")
+        let dest = dir.appendingPathComponent("Applications/Markee.app")
+        try makeApp(new, marker: "new")
+        try makeApp(dest, marker: "old")
+
+        XCTAssertEqual(try runSwap(new: new, dest: dest), 0)
+        XCTAssertEqual(try String(contentsOf: dest.appendingPathComponent("marker"), encoding: .utf8), "new")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dest.path + ".old"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: staging.path))
+    }
+
+    func test_failedCopyRestoresPreviousVersion() throws {
+        let dest = dir.appendingPathComponent("Applications/Markee.app")
+        try makeApp(dest, marker: "old")
+        let missing = dir.appendingPathComponent("nope/Markee.app")
+
+        XCTAssertEqual(try runSwap(new: missing, dest: dest), 1)
+        XCTAssertEqual(try String(contentsOf: dest.appendingPathComponent("marker"), encoding: .utf8), "old")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dest.path + ".old"))
+    }
+}

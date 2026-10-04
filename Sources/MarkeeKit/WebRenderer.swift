@@ -1,18 +1,8 @@
 import WebKit
 
-/// Forwards `WKScriptMessage` callbacks to a weakly-held target.
-/// `WKUserContentController` retains its message handler strongly; without
-/// this trampoline the chain WebRenderer → webView → configuration →
-/// userContentController → WebRenderer would be a retain cycle and the
-/// WebRenderer would never deallocate.
-@MainActor
-private final class WeakScriptMessageHandler: NSObject, WKScriptMessageHandler {
-    weak var target: WKScriptMessageHandler?
-
-    func userContentController(_ controller: WKUserContentController,
-                               didReceive message: WKScriptMessage) {
-        target?.userContentController(controller, didReceive: message)
-    }
+/// The page couldn't render the document (renderer missing or threw).
+public struct RenderError: Error {
+    public init() {}
 }
 
 /// Headless Markdown renderer. Owns a `WKWebView` wired with Markee's scheme
@@ -21,17 +11,20 @@ private final class WeakScriptMessageHandler: NSObject, WKScriptMessageHandler {
 /// inside the app's `PreviewController` — without file watching, the outline,
 /// task write-back, zoom, find, or any app chrome.
 @MainActor
-public final class WebRenderer: NSObject, WKScriptMessageHandler {
+public final class WebRenderer: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
     public let webView: WKWebView
 
-    private let bundleHandler = BundleSchemeHandler()
+    private let bundleHandler: BundleSchemeHandler
     private let docHandler: DocSchemeHandler
     private var isReady = false
 
-    /// - Parameter docRoot: directory the document lives in; relative
-    ///   `markee-doc://` URLs resolve against it (sandbox permitting).
-    public init(docRoot: URL) {
+    /// - Parameters:
+    ///   - docRoot: directory the document lives in; relative
+    ///     `markee-doc://` URLs resolve against it (sandbox permitting).
+    ///   - webRoot: override for the bundle's `web/` directory (tests only).
+    public init(docRoot: URL, webRoot: URL? = nil) {
         self.docHandler = DocSchemeHandler(docRoot: docRoot)
+        self.bundleHandler = webRoot.map(BundleSchemeHandler.init(webRoot:)) ?? BundleSchemeHandler()
 
         let config = WKWebViewConfiguration()
         let pagePrefs = WKWebpagePreferences()
@@ -45,14 +38,34 @@ public final class WebRenderer: NSObject, WKScriptMessageHandler {
         self.webView = WKWebView(frame: .zero, configuration: config)
         super.init()
 
-        // Weak trampoline: see WeakScriptMessageHandler above.
-        let proxy = WeakScriptMessageHandler()
-        proxy.target = self
-        userContent.add(proxy, name: "markee")
+        userContent.add(WeakScriptMessageHandler(target: self), name: "markee")
+        webView.navigationDelegate = self
     }
 
-    /// Begin loading `template.html`. Call once, before `waitUntilReady()`.
-    public func loadTemplate() {
+    /// Quick Look renders arbitrary files with no user action (Finder icon
+    /// view), so nothing may leave the machine: the template CSP already pins
+    /// scripts to the bundle, and this rule list blocks the remote images and
+    /// media the CSP allows in the app.
+    /// Content-blocker regexes have no `|` alternation: one rule per scheme.
+    static let blockRemoteRules = """
+        [{"trigger": {"url-filter": "^https?://"}, "action": {"type": "block"}},
+         {"trigger": {"url-filter": "^wss?://"}, "action": {"type": "block"}},
+         {"trigger": {"url-filter": "^ftp://"}, "action": {"type": "block"}}]
+        """
+
+    static func remoteBlockList() async throws -> WKContentRuleList {
+        guard let store = WKContentRuleListStore.default(),
+              let list = try await store.compileContentRuleList(
+                  forIdentifier: "markee-block-remote", encodedContentRuleList: blockRemoteRules)
+        else { throw URLError(.cannotLoadFromNetwork) }
+        return list
+    }
+
+    /// Install the remote-load block list, then begin loading `template.html`.
+    /// Call once, before `waitUntilReady()`. Fails closed: if the block list
+    /// can't be installed, nothing renders and Quick Look falls back.
+    public func loadTemplate() async throws {
+        webView.configuration.userContentController.add(try await Self.remoteBlockList())
         var components = URLComponents()
         components.scheme = BundleSchemeHandler.scheme
         components.host = "app"
@@ -74,7 +87,9 @@ public final class WebRenderer: NSObject, WKScriptMessageHandler {
 
     /// Render `source`. Resolves once the synchronous render call returns
     /// (text + layout in the DOM); asynchronous Mermaid may still finish after.
-    public func render(source: String, fileName: String, readOnly: Bool) async {
+    /// Throws if the page's renderer failed or isn't loaded, so Quick Look shows
+    /// its own fallback instead of a blank card.
+    public func render(source: String, fileName: String, readOnly: Bool) async throws {
         let payload: [String: Any] = [
             "source": source,
             "fileName": fileName,
@@ -84,17 +99,34 @@ public final class WebRenderer: NSObject, WKScriptMessageHandler {
         // `payload` always serializes to a JSON *object* literal, which is
         // also a valid JS expression — safe to interpolate as the argument.
         guard let data = try? JSONSerialization.data(withJSONObject: payload),
-              let json = String(data: data, encoding: .utf8) else { return }
-        await withCheckedContinuation { continuation in
-            webView.evaluateJavaScript("window.markee && window.markee.render(\(json));") { _, _ in
-                continuation.resume()
+              let json = String(data: data, encoding: .utf8) else { throw RenderError() }
+        let ok: Bool = try await withCheckedThrowingContinuation { continuation in
+            webView.evaluateJavaScript("!!(window.markee && window.markee.render(\(json)));") { result, error in
+                if let error { continuation.resume(throwing: error) } else {
+                    continuation.resume(returning: result as? Bool ?? false)
+                }
             }
         }
+        guard ok else { throw RenderError() }
+    }
+
+    /// The main frame only ever holds the template; link clicks in a Quick Look
+    /// preview go nowhere rather than replacing it.
+    public func webView(_ webView: WKWebView,
+                        decidePolicyFor navigationAction: WKNavigationAction,
+                        decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        guard let url = navigationAction.request.url else { decisionHandler(.cancel); return }
+        let isMainFrame = navigationAction.targetFrame?.isMainFrame ?? true
+        let isTemplate = url.scheme == BundleSchemeHandler.scheme && url.host == "app"
+            && url.path == "/template.html" && navigationAction.navigationType != .linkActivated
+        decisionHandler(isMainFrame ? (isTemplate ? .allow : .cancel)
+                                    : (url.scheme == "about" ? .allow : .cancel))
     }
 
     public func userContentController(_ userContentController: WKUserContentController,
                                       didReceive message: WKScriptMessage) {
         guard message.name == "markee",
+              message.frameInfo.isMainFrame,
               let body = message.body as? [String: Any],
               (body["kind"] as? String) == "ready" else { return }
         isReady = true

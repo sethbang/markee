@@ -201,13 +201,24 @@ private struct FileTreeView: View {
                         .foregroundStyle(.tertiary).font(.system(size: 12))
                         .padding(.horizontal, 16).padding(.top, 4)
                 } else {
-                    ForEach(workspace.fileTree) { node in
-                        FileTreeRow(node: node, depth: 0, controller: controller)
+                    let currentPath = controller.fileURL.standardizedFileURL.path
+                    ForEach(WorkspaceModel.visibleRows(workspace.fileTree, expanded: workspace.expandedFolders)) { item in
+                        FileTreeRow(node: item.node, depth: item.depth,
+                                    isExpanded: workspace.expandedFolders.contains(item.id),
+                                    isCurrent: !item.node.isDirectory && item.node.url.path == currentPath,
+                                    canBeRoot: item.node.isDirectory && controller.canSetWorkspaceRoot(item.node.url),
+                                    controller: controller, workspace: workspace)
+                            .equatable()
                     }
                 }
             }
             .padding(.bottom, 8)
         }
+        // Empty space below the rows; each row carries its own copy of the menu.
+        .contextMenu { FileTreeMenu(folder: nil, canBeRoot: false, controller: controller) }
+        .onAppear(perform: revealCurrentFile)
+        .onChange(of: controller.fileURL) { _ in revealCurrentFile() }
+        .onChange(of: workspace.root) { _ in revealCurrentFile() }
         .overlay(alignment: .bottom) {
             Button {
                 NotificationCenter.default.post(name: .openFolder, object: nil)
@@ -221,54 +232,91 @@ private struct FileTreeView: View {
             .background(.regularMaterial)
         }
     }
+
+    /// Adds (never removes) the open file's folders, so navigating keeps any
+    /// folders the user opened.
+    private func revealCurrentFile() {
+        workspace.expandedFolders.formUnion(WorkspaceModel.folderIDsRevealing(controller.fileURL, root: workspace.root))
+    }
 }
 
-private struct FileTreeRow: View {
+/// One flat row. Takes plain values rather than observing the controller, and
+/// is Equatable on them, so SwiftUI skips the bodies of rows a change leaves
+/// untouched (the parent still recomputes the cheap flat row list).
+private struct FileTreeRow: View, Equatable {
     let node: FileNode
     let depth: Int
-    @ObservedObject var controller: PreviewController
-    @State private var expanded = true
+    let isExpanded: Bool
+    let isCurrent: Bool
+    /// Contains the open file. Must be a stored value: an Equatable row skips
+    /// re-rendering, so its menu can't query the controller at render time
+    /// (navigating left folder menus with a stale disabled state).
+    let canBeRoot: Bool
+    let controller: PreviewController
+    let workspace: WorkspaceModel
 
-    private var isCurrent: Bool {
-        !node.isDirectory && node.url.standardizedFileURL == controller.fileURL.standardizedFileURL
+    static func == (a: Self, b: Self) -> Bool {
+        a.node.id == b.node.id && a.node.name == b.node.name && a.depth == b.depth
+            && a.isExpanded == b.isExpanded && a.isCurrent == b.isCurrent && a.canBeRoot == b.canBeRoot
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Button {
-                if node.isDirectory {
-                    expanded.toggle()
+        Button {
+            if node.isDirectory {
+                if isExpanded {
+                    workspace.expandedFolders.remove(node.id)
                 } else {
-                    controller.openFromTree(node.url)
+                    workspace.expandedFolders.insert(node.id)
                 }
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: node.isDirectory
-                          ? (expanded ? "chevron.down" : "chevron.right")
-                          : "doc.text")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 12)
-                    Text(node.name)
-                        .font(.system(size: 12, weight: isCurrent ? .semibold : .regular))
-                        .foregroundStyle(isCurrent ? Color.primary : Color.secondary)
-                        .lineLimit(1)
-                    Spacer(minLength: 0)
-                }
-                .padding(.leading, CGFloat(10 + depth * 12))
-                .padding(.trailing, 8)
-                .padding(.vertical, 4)
-                .contentShape(Rectangle())
+            } else {
+                controller.openFromTree(node.url)
             }
-            .buttonStyle(.plain)
-            .background(isCurrent ? Color.primary.opacity(0.06) : Color.clear)
-
-            if node.isDirectory && expanded {
-                ForEach(node.children) { child in
-                    FileTreeRow(node: child, depth: depth + 1, controller: controller)
-                }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: node.isDirectory
+                      ? (isExpanded ? "chevron.down" : "chevron.right")
+                      : "doc.text")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 12)
+                Text(node.name)
+                    .font(.system(size: 12, weight: isCurrent ? .semibold : .regular))
+                    .foregroundStyle(isCurrent ? Color.primary : Color.secondary)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
             }
+            .padding(.leading, CGFloat(10 + depth * 12))
+            .padding(.trailing, 8)
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .background(isCurrent ? Color.primary.opacity(0.06) : Color.clear)
+        .contextMenu {
+            FileTreeMenu(folder: node.isDirectory ? node.url : nil, canBeRoot: canBeRoot, controller: controller)
+        }
+    }
+}
+
+/// The Files sidebar's right-click menu: re-rooting on a folder, plus
+/// whole-tree expand/collapse anywhere in the panel.
+private struct FileTreeMenu: View {
+    let folder: URL?
+    let canBeRoot: Bool
+    let controller: PreviewController
+
+    var body: some View {
+        if let folder {
+            // A root must contain the open document (its images and links
+            // resolve through it), so other folders show the item disabled.
+            Button("Set as Workspace Root") { _ = controller.setWorkspaceRoot(folder) }
+                .disabled(!canBeRoot)
+            Divider()
+        }
+        Button("Expand All") {
+            controller.workspace.expandedFolders = WorkspaceModel.allFolderIDs(in: controller.workspace.fileTree)
+        }
+        Button("Collapse All") { controller.workspace.expandedFolders = [] }
     }
 }
 

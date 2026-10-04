@@ -17,6 +17,7 @@
     const errMsg = (e) => (e && e.message) ? e.message : String(e);
 
     let isReadOnly = false;        // set per-render; gates navigation + chrome
+    let currentFileName = "";      // set per-render; the export's <title>
 
     const showToast = (msg) => {
         const t = document.getElementById("toast");
@@ -93,9 +94,9 @@
         }
     }
 
-    // Pure helpers (collectTaskLineNumbers, slugify) live in util.js so they're
+    // Pure helpers (slugify, pickActiveHeading) live in util.js so they're
     // testable from Node. util.js exposes them via window.markeeUtil.
-    const { collectTaskLineNumbers, slugify, pickActiveHeading } = window.markeeUtil;
+    const { slugify, pickActiveHeading } = window.markeeUtil;
 
     function onTaskToggle(ev) {
         const cb = ev.currentTarget;
@@ -176,7 +177,7 @@
     // can't pair them as inline-math delimiters, then put them back. The tag
     // list mirrors auto-render's own default ignoredTags, so text KaTeX never
     // looks at is never touched.
-    const CURRENCY_MASK = "";
+    const CURRENCY_MASK = "\uE000";
     const MATH_SKIP = "script, noscript, style, textarea, pre, code, option";
 
     function eachMathTextNode(root, fn) {
@@ -209,9 +210,11 @@
     }
 
     // ---- render -------------------------------------------------------------
+    // Returns true once the document is in the DOM, false if it couldn't be
+    // rendered (Quick Look then falls back to the system preview/icon).
     function render(payload) {
         const article = document.getElementById("content");
-        if (!article) return;
+        if (!article) return false;
         isReadOnly = !!payload.readOnly;
         const isNav = !!payload.navigated;   // true on cross-file navigation
         // Re-render invalidates find ranges; reset the Swift counter to the
@@ -223,7 +226,7 @@
             showToast("Renderer not loaded. Run 'just fetch-vendor' to install vendored libs.");
             article.innerHTML = `<pre style="white-space:pre-wrap">${escapeHtml(payload.source || "")}</pre>`;
             post("outline", { items: [] });
-            return;
+            return false;
         }
 
         // Update <base> so relative URLs in the source resolve against the doc dir
@@ -238,6 +241,8 @@
         const prevScroll = window.scrollY;
         const prevHeight = document.documentElement.scrollHeight;
 
+        currentFileName = payload.fileName || "";
+
         // Per-render slug counter for heading-id de-duplication
         const slugCount = new Map();
 
@@ -250,14 +255,14 @@
         let tokens;
         let html;
         try {
-            const env = { wikiIndex: payload.wikiIndex || {} };
+            const env = { wikiIndex: payload.wikiIndex || {}, lineOffset: frontMatterLines };
             tokens = md.parse(src, env);
             html = md.renderer.render(tokens, md.options, env);
         } catch (err) {
             const msg = "Markdown render error: " + (err && err.message ? err.message : String(err));
             post("error", { message: msg });
             showToast(msg);
-            return;
+            return false;
         }
 
         article.innerHTML = html;
@@ -271,25 +276,32 @@
             post("docStats", { words: words, minutes: readingMinutes(words) });
         }
 
-        // Walk tokens for heading source lines (matched positionally to DOM headings).
-        const headingLines = [];
-        for (let i = 0; i < tokens.length; i++) {
-            const t = tokens[i];
-            if (t.type === "heading_open" && t.map) {
-                headingLines.push(t.map[0] + frontMatterLines);
-            }
-        }
-
         // Assign ids to headings + build outline
         const items = [];
         const headingEls = Array.from(article.querySelectorAll("h1, h2, h3, h4, h5, h6"));
-        headingEls.forEach((h, i) => {
+        // The page's own ids (#content, #toast, …) are reserved: a "## Toast"
+        // heading taking id="toast" picked up the toast's fixed-position CSS
+        // and was overwritten by the next toast. Explicit document ids that
+        // collide are dropped; the rest are taken before slugging so generated
+        // slugs never duplicate them.
+        const pageIds = new Set();
+        document.querySelectorAll("[id]").forEach((el) => {
+            if (el === article || !article.contains(el)) pageIds.add(el.id);
+        });
+        article.querySelectorAll("[id]").forEach((el) => {
+            if (pageIds.has(el.id)) el.removeAttribute("id");
+            else slugCount.set(el.id, 1);
+        });
+        pageIds.forEach((id) => slugCount.set(id, 1));
+        // Markdown headings carry data-line from render-core; raw-HTML <hN>
+        // tags have no source map, so their outline entry has no line.
+        headingEls.forEach((h) => {
             const level = parseInt(h.tagName.substring(1), 10);
             const title = h.textContent || "";
             const id = h.id || slugify(title, slugCount);
             h.id = id;
             const item = { id, level, title };
-            if (i < headingLines.length) item.line = headingLines[i];
+            if (h.dataset.line !== undefined) item.line = Number(h.dataset.line);
             items.push(item);
         });
         post("outline", { items });
@@ -300,17 +312,13 @@
         // observer from briefly observing detached nodes.
         rebuildHeadingObserver(headingEls);
 
-        // Tag task-list items with their source line, attach click handler.
-        // Source-line indices are computed against the ORIGINAL source so they
-        // match what's on disk (Swift reads the file fresh before toggling).
-        const taskLines = collectTaskLineNumbers(String(payload.source || ""));
+        // Task items arrive with data-line (their line in the ORIGINAL file,
+        // front matter included) stamped by render-core from the token maps.
         // readOnly (Quick Look) renders checkboxes non-interactive — a click
         // there cannot write back to the file, so don't pretend it can.
         const readOnly = !!payload.readOnly;
-        const taskItems = article.querySelectorAll("li.task-list-item");
-        taskItems.forEach((li, i) => {
-            if (i >= taskLines.length) return;
-            li.dataset.line = String(taskLines[i]);
+        const taskItems = article.querySelectorAll("li.task-list-item[data-line]");
+        taskItems.forEach((li) => {
             const cb = li.querySelector('input[type="checkbox"]');
             if (cb) {
                 if (readOnly) {
@@ -370,7 +378,12 @@
                 window.scrollTo(0, targetY);
             }
         }
+        return true;
+    }
 
+    // decodeURIComponent throws on stray `%` (e.g. `#50%-off`); fall back raw.
+    function safeDecode(s) {
+        try { return decodeURIComponent(s); } catch (_) { return s; }
     }
 
     function scrollToHeading(id) {
@@ -388,7 +401,7 @@
     // synchronously during dispatch), THEN invoke each queued `then`. On failure
     // the queue is dropped — diagrams stay as code — and a later render retries.
     function ensureMermaid(then) {
-        if (mermaidState === "ready" && window.mermaid) { then(); return; }
+        if (mermaidLib()) { then(); return; }
         mermaidWaiters.push(then);
         if (mermaidState === "loading") return;
         mermaidState = "loading";
@@ -409,18 +422,58 @@
         document.head.appendChild(s);
     }
 
-    function runMermaid(article) {
-        if (!window.mermaid) return;
+    // Effective theme: the Preferences override (data-theme) wins over the OS.
+    function mermaidTheme() {
+        const forced = document.documentElement.getAttribute("data-theme");
+        const dark = forced ? forced === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+        return dark ? "dark" : "default";
+    }
+
+    // The loaded library, or null. Never test `window.mermaid` for truthiness:
+    // a heading slugged "mermaid" (`## Mermaid`) makes it the <h2> element via
+    // named window access until the script loads.
+    function mermaidLib() {
+        const m = window.mermaid;
+        return mermaidState === "ready" && m && typeof m.run === "function" ? m : null;
+    }
+
+    // The theme Mermaid was last initialized with; a redraw happens only when
+    // the effective theme moves away from it.
+    let mermaidThemeInUse = null;
+
+    function initMermaid() {
         try {
+            mermaidThemeInUse = mermaidTheme();
+            // look/layout pinned explicitly: Mermaid 12 changes both defaults
+            // (re-laying out and recolouring existing diagrams), so a future
+            // bump keeps today's appearance unless we opt in.
+            mermaidLib().initialize({
+                startOnLoad: false, theme: mermaidThemeInUse, look: "classic", layout: "dagre"
+            });
+        } catch (_) { /* ignore */ }
+    }
+
+    // mermaid.run calls are chained, never concurrent: two overlapping runs
+    // over the same <pre> fight over its contents ("x.firstChild is null").
+    let mermaidQueue = Promise.resolve();
+
+    function runMermaid(article) {
+        const mermaid = mermaidLib();
+        if (!mermaid) return;
+        mermaidQueue = mermaidQueue.then(() => {
+            // The theme may have changed while no diagram was on screen.
+            if (mermaidTheme() !== mermaidThemeInUse) initMermaid();
             article.querySelectorAll("pre.mermaid").forEach((el) => {
+                // Mermaid replaces the source with its SVG; keep the source so
+                // a theme change can redraw the diagram.
+                if (!el.hasAttribute("data-processed")) el.dataset.mermaidSource = el.textContent;
+                else if (el.dataset.mermaidSource !== undefined) el.textContent = el.dataset.mermaidSource;
                 el.removeAttribute("data-processed");
             });
-            window.mermaid.run({ querySelector: "#content pre.mermaid" }).catch((e) => {
-                post("error", { message: "Diagram rendering failed: " + errMsg(e) });
-            });
-        } catch (e) {
+            return mermaid.run({ querySelector: "#content pre.mermaid" });
+        }).catch((e) => {
             post("error", { message: "Diagram rendering failed: " + errMsg(e) });
-        }
+        });
     }
 
     // ---- find ---------------------------------------------------------------
@@ -470,7 +523,9 @@
             acceptNode(node) {
                 if (!node.nodeValue) return NodeFilter.FILTER_REJECT;
                 const p = node.parentElement;
-                if (!p || p.closest(".markee-chrome, script, style")) return NodeFilter.FILTER_REJECT;
+                // .katex-mathml is KaTeX's visually-hidden MathML twin: matches
+                // there would be counted and stepped to but never visible.
+                if (!p || p.closest(".markee-chrome, .katex-mathml, script, style")) return NodeFilter.FILTER_REJECT;
                 return NodeFilter.FILTER_ACCEPT;
             }
         });
@@ -535,6 +590,30 @@
     }
 
     // ---- export standalone HTML --------------------------------------------
+    async function fetchAsDataURL(url) {
+        const blob = await (await fetch(url)).blob();
+        return await new Promise((resolve, reject) => {
+            const r = new FileReader();
+            r.onerror = reject;
+            r.onload = () => resolve(r.result);
+            r.readAsDataURL(blob);
+        });
+    }
+
+    // Replace each relative woff2 url() in `css` with a data URI. The woff/ttf
+    // fallbacks in the same src list aren't vendored and are left to fail.
+    async function inlineFontURLs(css, sheetHref) {
+        const urls = Array.from(new Set(css.match(/url\((?!data:)[^)]+\.woff2\)/g) || []));
+        for (const u of urls) {
+            const rel = u.slice(4, -1).replace(/^["']|["']$/g, "");
+            try {
+                const data = await fetchAsDataURL(new URL(rel, sheetHref).href);
+                css = css.split(u).join(`url(${data})`);
+            } catch (_) { /* leave it */ }
+        }
+        return css;
+    }
+
     async function exportStandalone() {
         const article = document.getElementById("content");
         if (!article) return "";
@@ -542,6 +621,9 @@
         // Screen-only chrome (copy buttons, badges, heading anchors) never
         // ships in canonical exports.
         clone.querySelectorAll(".markee-chrome").forEach((e) => e.remove());
+        // Source-line stamps only mean something next to the file on disk.
+        clone.querySelectorAll("[data-line]").forEach((e) => e.removeAttribute("data-line"));
+        clone.querySelectorAll("[data-mermaid-source]").forEach((e) => e.removeAttribute("data-mermaid-source"));
 
         // Inline images as data URIs
         const imgs = Array.from(clone.querySelectorAll("img"));
@@ -549,40 +631,43 @@
             const src = img.getAttribute("src");
             if (!src) return;
             try {
-                const resp = await fetch(src);
-                const blob = await resp.blob();
-                const dataUrl = await new Promise((resolve, reject) => {
-                    const r = new FileReader();
-                    r.onerror = reject;
-                    r.onload = () => resolve(r.result);
-                    r.readAsDataURL(blob);
-                });
-                img.setAttribute("src", dataUrl);
+                img.setAttribute("src", await fetchAsDataURL(src));
             } catch (_) { /* leave src as-is */ }
         }));
 
-        // Gather stylesheets. Skip the screen-scoped user-css block: exported
-        // HTML ships canonical (default look), like Print/PDF — the recipient
-        // shouldn't inherit the author's accent/font/custom-CSS.
+        // Gather stylesheets. Skip the screen-scoped user-css block and the
+        // dark highlight sheet: exported HTML ships canonical (default, light)
+        // look, like Print/PDF — the recipient shouldn't inherit the author's
+        // theme, accent, font or custom CSS. Any other sheet keeps its media
+        // scope, which inlining would otherwise drop.
+        const hasMath = !!clone.querySelector(".katex");
         const sheets = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'));
         const cssParts = [];
         for (const s of sheets) {
-            if (s.id === "markee-user-css") continue;
-            if (s.tagName === "STYLE") { cssParts.push(s.textContent); continue; }
-            const href = s.getAttribute("href"); if (!href) continue;
-            try {
-                const r = await fetch(href);
-                cssParts.push(await r.text());
-            } catch (_) { /* skip */ }
+            if (s.id === "markee-user-css" || s.id === "hljs-dark") continue;
+            let css;
+            if (s.tagName === "STYLE") {
+                css = s.textContent;
+            } else {
+                const href = s.getAttribute("href"); if (!href) continue;
+                try {
+                    css = await (await fetch(href)).text();
+                    // KaTeX's @font-face urls are relative to its sheet and
+                    // wouldn't resolve beside the exported file: inline them.
+                    if (hasMath && /katex/i.test(href)) css = await inlineFontURLs(css, href);
+                } catch (_) { continue; }
+            }
+            const media = s.getAttribute("media");
+            cssParts.push(media && media !== "all" ? `@media ${media} {\n${css}\n}` : css);
         }
 
         // Build standalone HTML
         const head = `<!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escapeHtml(document.title || "Markee export")}</title>
+<title>${escapeHtml(currentFileName || "Markee export")}</title>
 <style>
 ${cssParts.join("\n\n")}
 </style>
@@ -660,8 +745,9 @@ ${cssParts.join("\n\n")}
             // Keep it screen-only so the print path stays canonical (light).
             if (theme === "dark") darkSheet.media = "screen";
             else if (theme === "light") darkSheet.media = "not all";
-            else darkSheet.media = "(prefers-color-scheme: dark)";
+            else darkSheet.media = "screen and (prefers-color-scheme: dark)";
         }
+        redrawMermaidIfThemeChanged();
 
         // Accent + base font as :root variable overrides, then the user's CSS,
         // all inside the one screen-scoped block.
@@ -705,15 +791,19 @@ ${cssParts.join("\n\n")}
     // with the current OS color scheme. Actual diagram rendering is driven by
     // the onload waiter callback queued in render(), not from here.
     window.addEventListener("markee:mermaid-ready", () => {
-        if (window.mermaid && typeof window.mermaid.initialize === "function") {
-            try {
-                window.mermaid.initialize({
-                    startOnLoad: false,
-                    theme: matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "default"
-                });
-            } catch (_) { /* ignore */ }
-        }
+        if (mermaidLib()) initMermaid();
     });
+
+    // Diagrams are drawn in the theme current at render time; redraw them when
+    // the effective theme changes (Preferences override or OS appearance).
+    function redrawMermaidIfThemeChanged() {
+        if (mermaidThemeInUse === null || mermaidTheme() === mermaidThemeInUse) return;
+        const article = document.getElementById("content");
+        if (!mermaidLib() || !article || !article.querySelector("pre.mermaid")) return;
+        initMermaid();
+        runMermaid(article);
+    }
+    matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redrawMermaidIfThemeChanged);
 
     window.addEventListener("scroll", scrollHandler, { passive: true });
     window.addEventListener("resize", scrollHandler, { passive: true });
@@ -722,17 +812,27 @@ ${cssParts.join("\n\n")}
     // (or open a new window on ⌘/ctrl/middle-click). Capture phase so it beats
     // the default anchor handling. Other link schemes keep their existing path.
     function interceptLinkClick(ev, forceNewWindow) {
-        if (isReadOnly) return;
         const a = ev.target && ev.target.closest && ev.target.closest("a[href]");
         if (!a) return;
         let url;
         try { url = new URL(a.href); } catch (_) { return; }
         if (url.protocol !== "markee-doc:") return;
+        const fragment = url.hash ? safeDecode(url.hash.slice(1)) : "";
+        // `#id` links (footnotes, TOCs) resolve against <base href> — the doc's
+        // directory — so they'd otherwise navigate the main frame away.
+        const base = document.querySelector("base");
+        const basePath = base ? new URL(base.href).pathname : "";
+        if (url.hash && url.pathname === basePath && url.search === "") {
+            ev.preventDefault();
+            scrollToHeading(fragment);
+            return;
+        }
+        if (isReadOnly) return;
         if (!/\.(md|markdown)$/i.test(url.pathname)) return;
         ev.preventDefault();
         post("navigate", {
             path: url.pathname,
-            fragment: url.hash ? decodeURIComponent(url.hash.slice(1)) : "",
+            fragment: fragment,
             newWindow: forceNewWindow || ev.metaKey || ev.ctrlKey
         });
     }

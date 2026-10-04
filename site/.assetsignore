@@ -1,0 +1,16 @@
+# Never upload these with `wrangler deploy` (Workers Static Assets).
+# (_headers/_redirects stay: wrangler reads them as config, not assets.)
+**/.DS_Store
+*.afdesign
+.assetsignore
+img/a-chain-link.svg
+img/a-circular-refresh-arrow-looping-around-.svg
+img/a-magnifying-glass-over-a-single-page-of.svg
+img/a-page-of-text-lines-with-a-small-clock-.svg
+img/a-pair-of-double-square-brackets-framing.svg
+img/a-rounded-shield-with-a-checkmark.svg
+img/a-sheet-of-paper-marked-with-angle-brack.svg
+img/a-terminal-window-with-a-command-prompt-.svg
+img/radar.svg
+img/feature-editor-dark.png
+img/feature-editor-light.png
