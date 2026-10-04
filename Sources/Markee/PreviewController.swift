@@ -192,16 +192,20 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
         showOutline = true
     }
 
+    /// Whether `folder` contains the open document, the one requirement for a
+    /// workspace root.
+    func canSetWorkspaceRoot(_ folder: URL) -> Bool {
+        let rootPath = folder.standardizedFileURL.path
+        return fileURL.standardizedFileURL.path.hasPrefix(rootPath == "/" ? "/" : rootPath + "/")
+    }
+
     /// Re-root the workspace at `folder`, which must contain the open document
     /// (its `<base href>` and the sandbox are both relative to the root).
     /// Re-renders now with an empty wiki index, then again once the new index
     /// lands, so links never resolve against the previous root.
     @discardableResult
     func setWorkspaceRoot(_ folder: URL) -> Bool {
-        let rootPath = folder.standardizedFileURL.path
-        guard fileURL.standardizedFileURL.path.hasPrefix(rootPath == "/" ? "/" : rootPath + "/") else {
-            return false
-        }
+        guard canSetWorkspaceRoot(folder) else { return false }
         workspace.setRoot(folder)
         docHandler.setDocRoot(workspace.root)
         indexPopulated = false

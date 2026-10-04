@@ -8,6 +8,10 @@ import MarkeeKit
 final class WorkspaceModel: ObservableObject {
     @Published private(set) var root: URL
     @Published private(set) var fileTree: [FileNode] = []
+    /// Ids of the expanded folders in the file tree. Folders start collapsed (a
+    /// messy Downloads folder fully expanded is unnavigable); the open file's
+    /// folders are revealed. Lives here so it survives sidebar-mode switches.
+    @Published var expandedFolders: Set<String> = []
     /// stem (lowercased filename, no extension) → resolvable markee-doc:// URL.
     private(set) var wikiIndex: [String: String] = [:]
     /// Every `.md`/`.markdown` file under root, absolute URLs, for search.
@@ -108,6 +112,7 @@ final class WorkspaceModel: ObservableObject {
         markdownFiles = []
         wikiIndex = [:]
         fileTree = []
+        expandedFolders = []
         rebuild()
     }
 
@@ -206,6 +211,47 @@ final class WorkspaceModel: ObservableObject {
         childrenOf(dir: root.standardizedFileURL, files: files.map { $0.standardizedFileURL })
     }
 
+    /// Ids of the folder nodes between `root` and `file` (outermost first): the
+    /// only folders the file tree expands on its own. Empty for a file at the
+    /// root or outside it.
+    nonisolated static func folderIDsRevealing(_ file: URL, root: URL) -> [String] {
+        let rootPath = root.standardizedFileURL.path
+        var ids: [String] = []
+        var dir = file.standardizedFileURL.deletingLastPathComponent()
+        while dir.path.hasPrefix(rootPath + "/") {
+            ids.insert(dir.path, at: 0)
+            dir = dir.deletingLastPathComponent()
+        }
+        return ids
+    }
+
+    /// Every folder node's id in `tree`, at any depth (Expand All).
+    nonisolated static func allFolderIDs(in tree: [FileNode]) -> Set<String> {
+        var ids: Set<String> = []
+        for node in tree where node.isDirectory {
+            ids.insert(node.id)
+            ids.formUnion(allFolderIDs(in: node.children))
+        }
+        return ids
+    }
+
+    /// The tree flattened to the rows currently on display (pre-order, with
+    /// depth), skipping collapsed folders' subtrees. The sidebar renders this
+    /// in one LazyVStack so only on-screen rows are built: nesting row views
+    /// built an expanded folder's whole subtree eagerly, freezing Expand All
+    /// on large folders.
+    nonisolated static func visibleRows(_ tree: [FileNode], expanded: Set<String>) -> [FileTreeItem] {
+        var rows: [FileTreeItem] = []
+        func visit(_ nodes: [FileNode], depth: Int) {
+            for node in nodes {
+                rows.append(FileTreeItem(node: node, depth: depth))
+                if node.isDirectory && expanded.contains(node.id) { visit(node.children, depth: depth + 1) }
+            }
+        }
+        visit(tree, depth: 0)
+        return rows
+    }
+
     nonisolated private static func childrenOf(dir: URL, files: [URL]) -> [FileNode] {
         let prefix = dir.path + "/"
         let under = files.filter { $0.path.hasPrefix(prefix) }
@@ -236,6 +282,13 @@ struct WorkspaceIndex {
     let files: [URL]
     let wikiIndex: [String: String]
     let tree: [FileNode]
+}
+
+/// One visible row of the flattened file tree.
+struct FileTreeItem: Identifiable {
+    let node: FileNode
+    let depth: Int
+    var id: String { node.id }
 }
 
 /// One node in the workspace file tree.

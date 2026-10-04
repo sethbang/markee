@@ -57,6 +57,10 @@ All notable changes to Markee are documented here. Format roughly follows
   Open in Editor — they can't run without a terminal.
 - Markee registers as a Markdown *viewer*, and as only an alternate app for
   plain text; it no longer claims `.mmd` (Mermaid) files.
+- The Files sidebar starts with folders collapsed, revealing only the folders
+  that lead to the open file; folders you expand stay open as you navigate.
+  Right-click in it for Expand All / Collapse All, or on a folder for **Set as
+  Workspace Root** (any folder containing the open file).
 - `just app` no longer replaces `/Applications/Markee.app`; use `just install`.
 - Updated bundled libraries: markdown-it 15.0.2 (includes fixes for
   quadratic-time parsing), markdown-it-deflist 4.0.0, markdown-it-attrs

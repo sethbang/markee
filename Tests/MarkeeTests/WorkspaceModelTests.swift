@@ -88,6 +88,59 @@ final class WorkspaceModelTests: XCTestCase {
         XCTAssertEqual(r.tree.first?.name, "docs")
         XCTAssertTrue(r.tree.first?.isDirectory ?? false)
     }
+
+    /// The file tree starts collapsed except for the open file's folders, and
+    /// those ids must match the directory nodes `buildTree` produces.
+    func test_revealedFolderIDsMatchTreeNodesOfTheOpenFile() throws {
+        let file = try touch("docs/api/ref.md")
+        _ = try touch("other/x.md")
+        let root = tmp.standardizedFileURL
+        let tree = WorkspaceModel.buildTree(root: root, files: [file, root.appendingPathComponent("other/x.md")])
+        let docs = try XCTUnwrap(tree.first { $0.name == "docs" })
+        let api = try XCTUnwrap(docs.children.first { $0.name == "api" })
+
+        let ids = WorkspaceModel.folderIDsRevealing(file, root: root)
+        XCTAssertEqual(ids, [docs.id, api.id])
+        XCTAssertTrue(WorkspaceModel.folderIDsRevealing(root.appendingPathComponent("top.md"), root: root).isEmpty)
+        XCTAssertTrue(WorkspaceModel.folderIDsRevealing(URL(fileURLWithPath: "/elsewhere/a/b.md"), root: root).isEmpty)
+    }
+
+    func test_allFolderIDsCollectsEveryNestedFolder() throws {
+        let root = tmp.standardizedFileURL
+        let files = ["a/b/c/x.md", "a/y.md", "d/z.md", "top.md"].map { root.appendingPathComponent($0) }
+        let ids = WorkspaceModel.allFolderIDs(in: WorkspaceModel.buildTree(root: root, files: files))
+        XCTAssertEqual(ids, Set(["a", "a/b", "a/b/c", "d"].map { root.appendingPathComponent($0).path }))
+    }
+
+    /// The sidebar renders this flat list lazily; collapsed folders' subtrees
+    /// are never visited.
+    func test_visibleRowsFlattenOnlyExpandedFolders() throws {
+        let root = tmp.standardizedFileURL
+        let files = ["a/b/x.md", "a/y.md", "d/z.md", "top.md"].map { root.appendingPathComponent($0) }
+        let tree = WorkspaceModel.buildTree(root: root, files: files)
+        let a = root.appendingPathComponent("a").path
+
+        let collapsed = WorkspaceModel.visibleRows(tree, expanded: [])
+        XCTAssertEqual(collapsed.map(\.node.name), ["a", "d", "top.md"])
+        XCTAssertEqual(collapsed.map(\.depth), [0, 0, 0])
+
+        let open = WorkspaceModel.visibleRows(tree, expanded: [a])
+        XCTAssertEqual(open.map(\.node.name), ["a", "b", "y.md", "d", "top.md"])
+        XCTAssertEqual(open.map(\.depth), [0, 1, 1, 0, 0])
+
+        let all = WorkspaceModel.visibleRows(tree, expanded: WorkspaceModel.allFolderIDs(in: tree))
+        XCTAssertEqual(all.map(\.node.name), ["a", "b", "x.md", "y.md", "d", "z.md", "top.md"])
+        XCTAssertEqual(Set(all.map(\.id)).count, all.count)
+    }
+
+    @MainActor
+    func test_changingRootCollapsesTheTree() throws {
+        let file = try touch("a/doc.md")
+        let model = WorkspaceModel(documentURL: file)
+        model.expandedFolders = ["/somewhere"]
+        model.setRoot(tmp)
+        XCTAssertTrue(model.expandedFolders.isEmpty)
+    }
 }
 
 final class WorkspaceRootBoundTests: XCTestCase {

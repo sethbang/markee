@@ -121,6 +121,8 @@ final class PreviewControllerTests: XCTestCase {
         try "# A\n".write(to: file, atomically: true, encoding: .utf8)
         let controller = PreviewController(fileURL: file)
 
+        XCTAssertFalse(controller.canSetWorkspaceRoot(other))
+        XCTAssertTrue(controller.canSetWorkspaceRoot(docs))
         XCTAssertFalse(controller.setWorkspaceRoot(other))
         XCTAssertTrue(controller.setWorkspaceRoot(docs))
         XCTAssertEqual(controller.workspace.root.path, docs.standardizedFileURL.path)
