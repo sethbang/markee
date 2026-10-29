@@ -61,6 +61,11 @@ final class SupportNudgeStateTests: XCTestCase {
 
     // Support doc: docQuietPeriod after showing
 
+    // The other doc tests track the constant, so they'd pass at any value.
+    func test_docQuietPeriodIsTwoWeeks() {
+        XCTAssertEqual(SupportNudgeState.docQuietPeriod, 14 * 24 * 3600)
+    }
+
     func test_docSuppressedWithinQuietPeriod() {
         let s = state(firstLaunchDate: epoch, launchCount: enoughLaunches,
                       lastSupportDocShownDate: at(pastGrace))

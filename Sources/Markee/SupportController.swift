@@ -93,6 +93,10 @@ final class SupportController: ObservableObject {
     @Published private(set) var pendingCelebration: SupportMilestone?
     @Published private(set) var shownCelebration: SupportMilestone?
     private var usageObservation: AnyCancellable?
+    // The support doc opening on top of a just-shown drawer would bury it and
+    // still spend the day's milestone, so a doc launch holds them off.
+    private var celebrationsHeldThisLaunch = false
+    private var previewingCelebration = false
 
     private let defaults: UserDefaults
     private let now: () -> Date
@@ -159,6 +163,8 @@ final class SupportController: ObservableObject {
             return false
         }
         defaults.set(now(), forKey: Keys.lastSupportDocShownDate)
+        celebrationsHeldThisLaunch = true
+        pendingCelebration = nil
         return true
     }
 
@@ -168,31 +174,46 @@ final class SupportController: ObservableObject {
     }
 
     func evaluateMilestones(_ stats: UsageStats) {
-        guard pendingCelebration == nil, shownCelebration == nil, nudgesActive, !isSupporter,
+        guard pendingCelebration == nil, shownCelebration == nil, !celebrationsHeldThisLaunch,
+              nudgesActive, !isSupporter,
               forceNudges || loadState().isPastGracePeriod(now: now()) else { return }
-        pendingCelebration = SupportMilestones.next(
+        pendingCelebration = nextMilestone(stats)
+    }
+
+    private func nextMilestone(_ stats: UsageStats) -> SupportMilestone? {
+        SupportMilestones.next(
             stats: stats, celebrated: celebratedMilestones(),
             lastShown: defaults.object(forKey: Keys.lastMilestoneShownDate) as? Date, now: now())
     }
 
     /// Stamped on display rather than on detection, so quitting before any
-    /// Markee window is key doesn't spend the milestone unseen.
+    /// Markee window is key doesn't spend the milestone unseen. Re-picked here
+    /// too: usage can climb past higher tiers while Markee sits in the
+    /// background, and the drawer shouldn't headline a stale one next to the
+    /// live count. A debug preview is shown as-is and never persisted.
     func celebrationShown(_ stats: UsageStats) {
-        guard let milestone = pendingCelebration else { return }
+        guard let pending = pendingCelebration else { return }
+        pendingCelebration = nil
+        guard !previewingCelebration else {
+            shownCelebration = pending
+            return
+        }
+        let milestone = nextMilestone(stats) ?? pending
         let ids = SupportMilestones.celebrated(afterShowing: milestone, stats: stats,
                                                previously: celebratedMilestones())
         defaults.set(ids.sorted(), forKey: Keys.celebratedMilestones)
         defaults.set(now(), forKey: Keys.lastMilestoneShownDate)
-        pendingCelebration = nil
         shownCelebration = milestone
     }
 
     func dismissCelebration() {
         shownCelebration = nil
+        previewingCelebration = false
     }
 
     func debugCelebrate(_ stats: UsageStats) {
         shownCelebration = nil
+        previewingCelebration = true
         pendingCelebration = SupportMilestones.crossed(stats).first
             ?? SupportMilestone(kind: .rerenders, threshold: SupportMilestones.listed(.rerenders)[0])
     }

@@ -13,8 +13,9 @@ final class SupportControllerTests: XCTestCase {
         clock = Date(timeIntervalSince1970: 1_750_000_000)
     }
 
-    private func makeController(configured: Bool = true) -> SupportController {
-        SupportController(defaults: defaults, now: { self.clock }, isConfigured: { configured })
+    private func makeController(configured: Bool = true, forceNudges: Bool = false) -> SupportController {
+        SupportController(defaults: defaults, now: { self.clock }, isConfigured: { configured },
+                          forceNudges: forceNudges)
     }
 
     private func advance(days: Double) {
@@ -113,6 +114,73 @@ final class SupportControllerTests: XCTestCase {
         advance(days: 14)
         c.evaluateMilestones(hundredRerenders)
         XCTAssertNil(c.pendingCelebration)
+    }
+
+    private func rerenders(_ n: Int) -> UsageStats {
+        UsageStats(documentsPreviewed: 0, rerendersWatched: n, activeDays: 0, boxesChecked: 0)
+    }
+
+    func test_noSecondMilestoneWhileOneIsOnScreen_andTheNextWaitsADay() {
+        let c = pastGraceController()
+        c.evaluateMilestones(rerenders(100))
+        c.celebrationShown(rerenders(100))
+        c.evaluateMilestones(rerenders(500))
+        XCTAssertNil(c.pendingCelebration, "blocked while the drawer is still showing one")
+
+        c.dismissCelebration()
+        advance(days: 0.99)
+        c.evaluateMilestones(rerenders(500))
+        XCTAssertNil(c.pendingCelebration, "held for the 24-hour quiet period")
+        advance(days: 0.01)
+        c.evaluateMilestones(rerenders(500))
+        XCTAssertEqual(c.pendingCelebration?.threshold, 500)
+    }
+
+    func test_shownMilestoneIsRepickedFromLiveStats() {
+        let c = pastGraceController()
+        c.evaluateMilestones(rerenders(100))
+        c.celebrationShown(rerenders(620))
+        XCTAssertEqual(c.shownCelebration?.threshold, 500, "headline matches the count beside it")
+        XCTAssertTrue((defaults.stringArray(forKey: "support.celebratedMilestones") ?? []).contains("rerenders.500"))
+    }
+
+    func test_supportDocLaunchHoldsMilestones() {
+        let c = pastGraceController()
+        c.evaluateMilestones(rerenders(100))
+        XCTAssertTrue(c.consumeSupportDocTrigger())
+        XCTAssertNil(c.pendingCelebration)
+        c.evaluateMilestones(rerenders(100))
+        XCTAssertNil(c.pendingCelebration)
+        XCTAssertNil(defaults.object(forKey: "support.lastMilestoneShownDate"), "nothing was spent")
+    }
+
+    func test_debugPreviewNeverSpendsAMilestone() {
+        let c = pastGraceController()
+        c.debugCelebrate(rerenders(100))
+        c.celebrationShown(rerenders(100))
+        XCTAssertEqual(c.shownCelebration?.threshold, 100)
+        XCTAssertNil(defaults.object(forKey: "support.lastMilestoneShownDate"))
+        XCTAssertNil(defaults.stringArray(forKey: "support.celebratedMilestones"))
+
+        c.dismissCelebration()
+        c.evaluateMilestones(rerenders(100))
+        XCTAssertEqual(c.pendingCelebration?.threshold, 100, "the real one is still due")
+    }
+
+    func test_forceNudgesSkipsTheGracePeriodForMilestones() {
+        let c = makeController(forceNudges: true)
+        c.registerLaunch()
+        c.evaluateMilestones(rerenders(100))
+        XCTAssertNotNil(c.pendingCelebration)
+    }
+
+    func test_resetNudgeTimersClearsMilestoneState() {
+        let c = pastGraceController()
+        c.evaluateMilestones(rerenders(100))
+        c.celebrationShown(rerenders(100))
+        c.resetNudgeTimers()
+        XCTAssertNil(defaults.object(forKey: "support.celebratedMilestones"))
+        XCTAssertNil(defaults.object(forKey: "support.lastMilestoneShownDate"))
     }
 
     func test_corruptDefaultsDegradeToFreshInstall() {

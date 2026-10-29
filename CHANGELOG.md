@@ -20,8 +20,9 @@ All notable changes to Markee are documented here. Format roughly follows
   [markee.sbang.dev/teams/checkout](https://markee.sbang.dev/teams/checkout).
   Includes priority support, a signed support agreement on request, and
   invoices; each seat holder gets their own key. See `COMMERCIAL.md`.
-- **Developer Debug menu** (`MARKEE_DEV_TOOLS=1`) for exercising licensing
-  state locally without contacting Polar.
+- **Debug menu** (`MARKEE_DEV_TOOLS=1`): new **Preview Milestone
+  Celebration** item, which shows a celebration without using up a real one,
+  and **Reset Nudge Timers** now also clears celebrated milestones.
 
 ## [1.2.0] — 2026-10-03
 

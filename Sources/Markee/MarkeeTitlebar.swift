@@ -22,10 +22,10 @@ struct MarkeeTitlebar: View {
     @State private var heartFilled = false
     @State private var autoDismiss: DispatchWorkItem?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    // Timer publisher + onReceive ties the heartbeat to the view's lifetime
-    // (auto-cancels on disappear); a hand-rolled Timer in onAppear would leak
-    // past the window closing and need manual invalidation.
-    private let heartbeat = Timer.publish(every: 300, on: .main, in: .common).autoconnect()
+    // A .task loop, not a stored Timer.publish: the titlebar struct is rebuilt
+    // on every save or scroll, and each rebuild would restart a 5-minute timer
+    // before it could fire. The task lives as long as the heart is on screen.
+    private static let heartbeatInterval: UInt64 = 300 * 1_000_000_000
 
     // Reserved gutter widths around the traffic-light cluster so the centered
     // filename stays visually centered in the window.
@@ -109,8 +109,11 @@ struct MarkeeTitlebar: View {
                         .popover(isPresented: $showStats, arrowEdge: .bottom) {
                             drawer.onHover { if $0 { cancelAutoDismiss() } }
                         }
-                        .onReceive(heartbeat) { _ in
-                            if !showStats { pulse() }
+                        .task {
+                            while !Task.isCancelled {
+                                try? await Task.sleep(nanoseconds: Self.heartbeatInterval)
+                                if !Task.isCancelled { pulse() }
+                            }
                         }
                         .onAppear {
                             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { pulse() }
@@ -119,6 +122,13 @@ struct MarkeeTitlebar: View {
                         .onChange(of: celebrate) { _ in openForCelebration() }
                         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
                             openForCelebration()
+                        }
+                        // Closing the window (or the heart going away) with
+                        // the drawer open never flips showStats, and a stale
+                        // shownCelebration would block every later milestone.
+                        .onDisappear {
+                            cancelAutoDismiss()
+                            if showStats { onDrawerClosed() }
                         }
                         .onChange(of: showStats) { open in
                             if open {

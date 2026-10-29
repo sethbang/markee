@@ -71,8 +71,11 @@ two Quick Look extensions under `Contents/PlugIns/`.
     credits), and the pure Polar wire format. Nothing is feature-gated; paying
     only silences the throttled nudges (a support doc at most every 14 days,
     plus milestone celebrations from `SupportMilestones.swift`: the drawer opens
-    itself once per crossed usage threshold, at most once a day, in the key
-    window only, stamped on display, and closes itself after 8s unless hovered;
+    itself on the highest newly crossed threshold of a kind, and the lower tiers
+    it skipped are marked done unshown, deliberately, so nobody gets a backlog;
+    each other kind's top tier queues for a later day. At most one a day, never
+    on a launch that opens the support doc, in the key window only, re-picked
+    and stamped on display, closing itself after 8s unless hovered;
     thresholds continue in fixed steps past the hand-picked list, never
     geometrically) and removes the heart. Activation hits Polar's public
     (unauthenticated) customer-portal endpoint, so no API key ships in the app. `SupportConfig` reads
