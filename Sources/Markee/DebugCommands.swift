@@ -1,8 +1,8 @@
 import AppKit
 import SwiftUI
 
-/// Developer-only menu, revealed by MARKEE_DEV_TOOLS=1. Items 1-3 never contact
-/// Polar, so routine testing consumes none of the 3 activation slots.
+/// Developer-only menu, revealed by MARKEE_DEV_TOOLS=1. Only Deactivate This Mac
+/// contacts Polar, so routine testing consumes none of the 3 activation slots.
 struct DebugCommands: Commands {
     @ObservedObject var controller = SupportController.shared
 
@@ -17,7 +17,11 @@ struct DebugCommands: Commands {
                 }
                 Button("Reset Nudge Timers") {
                     controller.resetNudgeTimers()
-                    Self.info("Nudge Timers Reset", "First-launch date, launch count, and last-shown date cleared.")
+                    Self.info("Nudge Timers Reset",
+                              "First-launch date, launch count, last-shown dates, and celebrated milestones cleared.")
+                }
+                Button("Preview Milestone Celebration") {
+                    controller.debugCelebrate(UsageTracker.shared.stats)
                 }
                 Divider()
                 Button("License State…") {

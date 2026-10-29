@@ -8,8 +8,11 @@ All notable changes to Markee are documented here. Format roughly follows
 
 ### Added
 - **Optional supporter license, now live.** Nothing is feature-gated;
-  supporting only silences the throttled nudges (the titlebar heart and a
-  monthly support note). Pay what you want once, from $4.99, or $5 a year as a
+  supporting only silences the throttled nudges: a pink titlebar heart that
+  beats every few minutes, a support note at most every two weeks, and a
+  brief thank-you when you cross a usage milestone (100 re-renders, 30 days
+  with Markee, each year with Markee, …) that closes itself after a few
+  seconds. Pay what you want once, from $4.99, or $5 a year as a
   Sustainer. A key covers up to 3 Macs; free a slot any time from the Polar
   customer portal. **Markee ▸ Enter License Key…** redeems it.
 - **Team licenses**: a voluntary commercial-support license at $10 per seat per

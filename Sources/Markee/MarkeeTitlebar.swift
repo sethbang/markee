@@ -11,13 +11,21 @@ struct MarkeeTitlebar: View {
     var onForward: () -> Void = {}
     var showSupport: Bool = false
     var drawer: AnyView? = nil
+    var celebrate: Bool = false
+    var isCelebrationPending: () -> Bool = { false }
+    var isKeyWindow: () -> Bool = { false }
+    var onDrawerShown: () -> Void = {}
+    var onDrawerClosed: () -> Void = {}
 
     @State private var showStats = false
     @State private var beat: CGFloat = 1.0
+    @State private var heartFilled = false
+    @State private var autoDismiss: DispatchWorkItem?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     // Timer publisher + onReceive ties the heartbeat to the view's lifetime
     // (auto-cancels on disappear); a hand-rolled Timer in onAppear would leak
     // past the window closing and need manual invalidation.
-    private let heartbeat = Timer.publish(every: 40, on: .main, in: .common).autoconnect()
+    private let heartbeat = Timer.publish(every: 300, on: .main, in: .common).autoconnect()
 
     // Reserved gutter widths around the traffic-light cluster so the centered
     // filename stays visually centered in the window.
@@ -87,9 +95,9 @@ struct MarkeeTitlebar: View {
                         Button {
                             showStats.toggle()
                         } label: {
-                            Image(systemName: "heart")
+                            Image(systemName: heartFilled ? "heart.fill" : "heart")
                                 .font(.system(size: 13, weight: .regular))
-                                .foregroundStyle(toggleIconColor)
+                                .foregroundStyle(Color.pink.opacity(heartFilled ? 1 : 0.8))
                                 .scaleEffect(beat)
                                 .frame(width: 24, height: 24)
                                 .contentShape(Rectangle())
@@ -98,9 +106,27 @@ struct MarkeeTitlebar: View {
                         .help("Support Markee")
                         .accessibilityLabel("Support Markee")
                         .padding(.trailing, 10)
-                        .popover(isPresented: $showStats, arrowEdge: .bottom) { drawer }
+                        .popover(isPresented: $showStats, arrowEdge: .bottom) {
+                            drawer.onHover { if $0 { cancelAutoDismiss() } }
+                        }
                         .onReceive(heartbeat) { _ in
                             if !showStats { pulse() }
+                        }
+                        .onAppear {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { pulse() }
+                            openForCelebration()
+                        }
+                        .onChange(of: celebrate) { _ in openForCelebration() }
+                        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
+                            openForCelebration()
+                        }
+                        .onChange(of: showStats) { open in
+                            if open {
+                                onDrawerShown()
+                            } else {
+                                cancelAutoDismiss()
+                                onDrawerClosed()
+                            }
                         }
                     }
                 }
@@ -115,14 +141,53 @@ struct MarkeeTitlebar: View {
         }
     }
 
-    // A subtle, occasional double-beat (lub-dub) so the heart catches the eye
-    // without nagging. Paused while the popover is open.
+    // Only the key window opens on a milestone, so one crossing never stacks a
+    // popover in every open window. Key-ness comes from the NSWindow, not
+    // controlActiveState, which didn't report .key here when a menu item set
+    // the milestone. Deferred a turn so a menu that triggered it has finished
+    // dismissing before the popover presents. Pending-ness is read through a
+    // closure because these callbacks hold a stale copy of this struct, whose
+    // `celebrate` was still false when the menu item set it.
+    private func openForCelebration() {
+        DispatchQueue.main.async {
+            guard isCelebrationPending(), isKeyWindow(), !showStats else { return }
+            showStats = true
+            scheduleAutoDismiss()
+        }
+    }
+
+    // A milestone opened on its own closes on its own, so it never costs a
+    // click; pointing at it (which any click inside starts with) keeps it.
+    // A drawer opened from the heart is left alone.
+    private static let autoDismissDelay: TimeInterval = 8
+
+    private func scheduleAutoDismiss() {
+        cancelAutoDismiss()
+        let work = DispatchWorkItem { showStats = false }
+        autoDismiss = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.autoDismissDelay, execute: work)
+    }
+
+    private func cancelAutoDismiss() {
+        autoDismiss?.cancel()
+        autoDismiss = nil
+    }
+
+    // A rare but unmistakable double-beat (lub-dub): when the window opens,
+    // then every few minutes. Paused while the popover is open; with Reduce
+    // Motion the heart only fills briefly instead of scaling.
     private func pulse() {
-        withAnimation(.easeOut(duration: 0.16)) { beat = 1.16 }
+        guard !showStats else { return }
+        withAnimation(.easeInOut(duration: 0.2)) { heartFilled = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) {
+            withAnimation(.easeInOut(duration: 0.4)) { heartFilled = false }
+        }
+        guard !reduceMotion else { return }
+        withAnimation(.easeOut(duration: 0.16)) { beat = 1.35 }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
             withAnimation(.easeIn(duration: 0.16)) { beat = 1.0 }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
-                withAnimation(.easeOut(duration: 0.14)) { beat = 1.10 }
+                withAnimation(.easeOut(duration: 0.14)) { beat = 1.2 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
                     withAnimation(.easeIn(duration: 0.16)) { beat = 1.0 }
                 }

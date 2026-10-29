@@ -65,7 +65,12 @@ private struct PreviewContent: View {
                 onBack: { controller.goBack() },
                 onForward: { controller.goForward() },
                 showSupport: support.showSupportButton,
-                drawer: AnyView(SupportDrawer(support: support, usage: UsageTracker.shared))
+                drawer: AnyView(SupportDrawer(support: support, usage: UsageTracker.shared)),
+                celebrate: support.pendingCelebration != nil,
+                isCelebrationPending: { support.pendingCelebration != nil },
+                isKeyWindow: { controller.webView.window?.isKeyWindow == true },
+                onDrawerShown: { support.celebrationShown(UsageTracker.shared.stats) },
+                onDrawerClosed: { support.dismissCelebration() }
             )
             HStack(spacing: 0) {
                 OutlineSidebar(controller: controller)

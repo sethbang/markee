@@ -69,14 +69,18 @@ two Quick Look extensions under `Contents/PlugIns/`.
     nudge-cadence logic, the `UserDefaults`-backed controller + key redemption,
     the SwiftUI surfaces (titlebar ♥ → `SupportDrawer` popover, menu, About
     credits), and the pure Polar wire format. Nothing is feature-gated; paying
-    only silences the throttled nudges (a monthly support doc) and removes the
-    heart. Activation hits Polar's public (unauthenticated) customer-portal
-    endpoint, so no API key ships in the app. `SupportConfig` reads
+    only silences the throttled nudges (a support doc at most every 14 days,
+    plus milestone celebrations from `SupportMilestones.swift`: the drawer opens
+    itself once per crossed usage threshold, at most once a day, in the key
+    window only, stamped on display, and closes itself after 8s unless hovered;
+    thresholds continue in fixed steps past the hand-picked list, never
+    geometrically) and removes the heart. Activation hits Polar's public
+    (unauthenticated) customer-portal endpoint, so no API key ships in the app. `SupportConfig` reads
     `MARKEE_POLAR_BASE_URL`/`MARKEE_POLAR_ORG_ID` from the environment to point
     a local build at the Polar sandbox for testing. **Kill switch:** blanking
     `SupportConfig.productionOrganizationID` hides the whole supporter surface
-    (heart, menu items, monthly doc); pull the `/support` redirect and footer
-    link with it. Live since 1.3.0. Polar products: the one-time "Markee
+    (heart, menu items, support doc, milestones); pull the `/support` redirect
+    and footer link with it. Live since 1.3.0. Polar products: the one-time "Markee
     License" + yearly "Markee Sustainer" (both on the `/support` checkout) and
     the seat-based yearly "Markee Team License" (`/teams/checkout`). All three
     carry the same license-key benefit, which **must keep an activation limit**:

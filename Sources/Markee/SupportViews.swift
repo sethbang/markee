@@ -7,7 +7,7 @@ struct SupportDrawer: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("You and Markee")
+            Text(support.shownCelebration?.headline ?? "You and Markee")
                 .font(.system(size: 13, weight: .semibold))
 
             VStack(spacing: 6) {

@@ -57,6 +57,64 @@ final class SupportControllerTests: XCTestCase {
         XCTAssertTrue(reloaded.isSupporter)
     }
 
+    private let hundredRerenders = UsageStats(documentsPreviewed: 0, rerendersWatched: 100,
+                                              activeDays: 0, boxesChecked: 0)
+
+    private func pastGraceController() -> SupportController {
+        let c = makeController()
+        for _ in 0..<5 { c.registerLaunch() }
+        advance(days: 14)
+        return c
+    }
+
+    func test_milestoneWaitsForGracePeriod() {
+        let c = makeController()
+        c.registerLaunch()
+        c.evaluateMilestones(hundredRerenders)
+        XCTAssertNil(c.pendingCelebration)
+    }
+
+    func test_milestoneIsStampedOnlyWhenShown() {
+        let c = pastGraceController()
+        c.evaluateMilestones(hundredRerenders)
+        XCTAssertEqual(c.pendingCelebration, SupportMilestone(kind: .rerenders, threshold: 100))
+        XCTAssertNil(defaults.object(forKey: "support.lastMilestoneShownDate"))
+
+        c.celebrationShown(hundredRerenders)
+        XCTAssertNil(c.pendingCelebration)
+        XCTAssertEqual(c.shownCelebration?.threshold, 100)
+        XCTAssertEqual(defaults.object(forKey: "support.lastMilestoneShownDate") as? Date, clock)
+
+        c.dismissCelebration()
+        advance(days: 30)
+        c.evaluateMilestones(hundredRerenders)
+        XCTAssertNil(c.pendingCelebration, "a celebrated milestone never repeats")
+    }
+
+    func test_unshownMilestoneSurvivesRelaunch() {
+        pastGraceController().evaluateMilestones(hundredRerenders)
+        let relaunched = makeController()
+        relaunched.evaluateMilestones(hundredRerenders)
+        XCTAssertNotNil(relaunched.pendingCelebration)
+    }
+
+    func test_supporterNeverGetsMilestones() {
+        let c = pastGraceController()
+        c.evaluateMilestones(hundredRerenders)
+        c.markSupporter(key: "MARKEE-TEST-KEY", activationID: "act-1")
+        XCTAssertNil(c.pendingCelebration)
+        c.evaluateMilestones(hundredRerenders)
+        XCTAssertNil(c.pendingCelebration)
+    }
+
+    func test_unconfiguredBuildNeverCelebrates() {
+        let c = makeController(configured: false)
+        for _ in 0..<5 { c.registerLaunch() }
+        advance(days: 14)
+        c.evaluateMilestones(hundredRerenders)
+        XCTAssertNil(c.pendingCelebration)
+    }
+
     func test_corruptDefaultsDegradeToFreshInstall() {
         defaults.set("garbage", forKey: "support.firstLaunchDate")
         let c = makeController()

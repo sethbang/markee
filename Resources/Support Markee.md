@@ -24,7 +24,7 @@ and notarized, and buys time for new features.
 ## Prefer not to?
 
 Totally fine. Close this window and keep using Markee forever. This note
-shows at most once a month, and nothing else changes.
+shows at most every couple of weeks, and nothing else changes.
 
 ---
 

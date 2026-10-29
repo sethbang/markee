@@ -4,7 +4,7 @@ import Foundation
 
 enum SupportConfig {
     // Blanking this is the kill switch: an empty ID keeps isConfigured() false,
-    // which hides the heart, the menu items, and the monthly support doc, so a
+    // which hides the heart, the menu items, and the support doc, so a
     // build can ship without advertising a checkout that can't take payment.
     // The /support redirect and site footer link must go with it. Covered by
     // test_unconfiguredBuildShowsNoNudgesEvenPastGrace.
@@ -87,6 +87,12 @@ final class SupportController: ObservableObject {
     // Ambient titlebar affordance: always present for a non-supporter once
     // nudges are active, and removed the moment they become a supporter.
     @Published private(set) var showSupportButton: Bool = false
+    // A crossed milestone waiting for a key window to open the drawer on it,
+    // then the one on screen. Split so a second window becoming key while the
+    // drawer is open doesn't open it again.
+    @Published private(set) var pendingCelebration: SupportMilestone?
+    @Published private(set) var shownCelebration: SupportMilestone?
+    private var usageObservation: AnyCancellable?
 
     private let defaults: UserDefaults
     private let now: () -> Date
@@ -107,6 +113,8 @@ final class SupportController: ObservableObject {
         static let firstLaunchDate = "support.firstLaunchDate"
         static let launchCount = "support.launchCount"
         static let lastSupportDocShownDate = "support.lastSupportDocShownDate"
+        static let celebratedMilestones = "support.celebratedMilestones"
+        static let lastMilestoneShownDate = "support.lastMilestoneShownDate"
     }
 
     init(defaults: UserDefaults = .standard,
@@ -125,6 +133,7 @@ final class SupportController: ObservableObject {
 
     private func refreshSupportButton() {
         showSupportButton = nudgesActive && !isSupporter
+        if isSupporter { pendingCelebration = nil }
     }
 
     private func loadState() -> SupportNudgeState {
@@ -153,6 +162,45 @@ final class SupportController: ObservableObject {
         return true
     }
 
+    func observe(_ usage: UsageTracker) {
+        usageObservation = usage.$stats.removeDuplicates()
+            .sink { [weak self] in self?.evaluateMilestones($0) }
+    }
+
+    func evaluateMilestones(_ stats: UsageStats) {
+        guard pendingCelebration == nil, shownCelebration == nil, nudgesActive, !isSupporter,
+              forceNudges || loadState().isPastGracePeriod(now: now()) else { return }
+        pendingCelebration = SupportMilestones.next(
+            stats: stats, celebrated: celebratedMilestones(),
+            lastShown: defaults.object(forKey: Keys.lastMilestoneShownDate) as? Date, now: now())
+    }
+
+    /// Stamped on display rather than on detection, so quitting before any
+    /// Markee window is key doesn't spend the milestone unseen.
+    func celebrationShown(_ stats: UsageStats) {
+        guard let milestone = pendingCelebration else { return }
+        let ids = SupportMilestones.celebrated(afterShowing: milestone, stats: stats,
+                                               previously: celebratedMilestones())
+        defaults.set(ids.sorted(), forKey: Keys.celebratedMilestones)
+        defaults.set(now(), forKey: Keys.lastMilestoneShownDate)
+        pendingCelebration = nil
+        shownCelebration = milestone
+    }
+
+    func dismissCelebration() {
+        shownCelebration = nil
+    }
+
+    func debugCelebrate(_ stats: UsageStats) {
+        shownCelebration = nil
+        pendingCelebration = SupportMilestones.crossed(stats).first
+            ?? SupportMilestone(kind: .rerenders, threshold: SupportMilestones.listed(.rerenders)[0])
+    }
+
+    private func celebratedMilestones() -> Set<String> {
+        Set(defaults.stringArray(forKey: Keys.celebratedMilestones) ?? [])
+    }
+
     func markSupporter(key: String, activationID: String) {
         defaults.set(key, forKey: Keys.licenseKey)
         defaults.set(activationID, forKey: Keys.activationID)
@@ -171,6 +219,8 @@ final class SupportController: ObservableObject {
         defaults.removeObject(forKey: Keys.firstLaunchDate)
         defaults.removeObject(forKey: Keys.launchCount)
         defaults.removeObject(forKey: Keys.lastSupportDocShownDate)
+        defaults.removeObject(forKey: Keys.celebratedMilestones)
+        defaults.removeObject(forKey: Keys.lastMilestoneShownDate)
     }
 
     func debugStateSummary() -> String {

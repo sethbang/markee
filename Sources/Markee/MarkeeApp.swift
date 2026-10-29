@@ -177,9 +177,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         EditorLauncher.warmCache()
         SupportController.shared.registerLaunch()
         UsageTracker.shared.recordActiveDay()
+        SupportController.shared.observe(UsageTracker.shared)
         // Resolve the bundled doc before consuming the trigger: consume stamps
-        // the 30-day clock, so ordering it first would "spend" the month in any
-        // context where the resource is absent (e.g. swift run, no app bundle).
+        // the quiet-period clock, so ordering it first would "spend" the period
+        // in any context where the resource is absent (e.g. swift run, no app
+        // bundle).
         guard let doc = Bundle.main.url(forResource: "Support Markee", withExtension: "md"),
               SupportController.shared.consumeSupportDocTrigger()
         else { return }
