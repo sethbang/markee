@@ -6,6 +6,20 @@ All notable changes to Markee are documented here. Format roughly follows
 
 ## [Unreleased]
 
+### Added
+- **Optional supporter license, now live.** Nothing is feature-gated;
+  supporting only silences the throttled nudges (the titlebar heart and a
+  monthly support note). Pay what you want once, from $4.99, or $5 a year as a
+  Sustainer. A key covers up to 3 Macs; free a slot any time from the Polar
+  customer portal. **Markee ▸ Enter License Key…** redeems it.
+- **Team licenses**: a voluntary commercial-support license at $10 per seat per
+  year (minimum 5), bought self-serve at
+  [markee.sbang.dev/teams/checkout](https://markee.sbang.dev/teams/checkout).
+  Includes priority support, a signed support agreement on request, and
+  invoices; each seat holder gets their own key. See `COMMERCIAL.md`.
+- **Developer Debug menu** (`MARKEE_DEV_TOOLS=1`) for exercising licensing
+  state locally without contacting Polar.
+
 ## [1.2.0] — 2026-10-03
 
 ### Added

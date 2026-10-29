@@ -3,14 +3,12 @@ import Combine
 import Foundation
 
 enum SupportConfig {
-    // Deliberately empty until go-live: the Polar organization is still in test
-    // mode pending identity verification, so a live checkout would take no
-    // money. Empty keeps isConfigured() false, which makes the heart, the menu
-    // items, and the monthly support doc all dormant — the entire supporter
-    // surface disappears rather than advertising a checkout that can't pay.
-    // Restore this UUID (with the /support redirect and footer link) at
-    // licensing go-live. Covered by test_unconfiguredBuildShowsNoNudgesEvenPastGrace.
-    static let productionOrganizationID = ""
+    // Blanking this is the kill switch: an empty ID keeps isConfigured() false,
+    // which hides the heart, the menu items, and the monthly support doc, so a
+    // build can ship without advertising a checkout that can't take payment.
+    // The /support redirect and site footer link must go with it. Covered by
+    // test_unconfiguredBuildShowsNoNudgesEvenPastGrace.
+    static let productionOrganizationID = "c183b314-d233-473e-8efb-4f2c9ff5061f"
     static let productionBaseURL = "https://api.polar.sh"
 
     static let checkoutURL = URL(string: "https://markee.sbang.dev/support")!

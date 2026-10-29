@@ -10,12 +10,17 @@ how your organization works, a Team license is how you support its continued
 maintenance — and it gives your company a few things an individual download
 doesn't.
 
+**Just you, using Markee at work?** You don't need a Team license. Buy the
+regular [supporter license](https://markee.sbang.dev/support) and expense it:
+tick "I'm purchasing as a business" at checkout and Polar issues a proper
+invoice with tax handled.
+
 ## What a Team license includes
 
 - **Priority support.** A dedicated support contact — shared with you when you
   buy — for setup, rollout, and issue triage, ahead of the public issue tracker.
 - **A commercial support agreement.** A short, signed document your procurement
-  or legal team can keep on file — see
+  or legal team can keep on file, issued on request — see
   [`docs/commercial-agreement-template.md`](docs/commercial-agreement-template.md)
   for the template. Many organizations need a paper trail for the software they
   rely on; this provides it.
@@ -26,29 +31,35 @@ doesn't.
 
 ## Pricing
 
-**$15 per seat per year**, billed once annually (not an auto-renewing
-subscription). A *seat* is one person who uses Markee at your organization.
+**$10 per seat per year**, as an annual subscription through Polar. A *seat*
+is one person who uses Markee at your organization.
 
-- **Minimum 5 seats** ($75/year).
-- Volume pricing is available for larger teams (see "How to buy").
+- **Minimum 5 seats** ($50/year).
+- Renews yearly so your support term stays current; cancel any time from the
+  Polar customer portal. Cancelling ends priority support at the end of the
+  term — it never stops anyone from using Markee.
 
 Seat counts are an honor-based commitment, the same way the rest of Markee works
 — there's no license server phoning home, and nothing in the app is ever gated.
-(The individual supporter key does cap activations at 3 Macs, purely so the
-nudge-silencing key isn't posted publicly; you can free a slot any time from the
-Polar customer portal. Team seat counts have no such cap.) You buy the number of
-seats that reflects your usage, and the license key removes the support nudges
-for everyone on your team.
+Buy the number of seats that reflects your usage. Each seat holder gets their
+own license key, which removes the support nudges on up to 3 of their Macs (a
+cap that only exists so keys aren't posted publicly; free a slot any time from
+the Polar customer portal).
 
 ## How to buy
 
-To buy seats, **[start a discussion on the GitHub repository](https://github.com/sethbang/markee)**
-(or email howdy@sbang.dev) and we'll send you a Polar checkout link. Your
-purchase confirmation includes your priority support contact and the commercial
-support agreement.
+**[Buy Team seats →](https://markee.sbang.dev/teams/checkout)** — pick your
+seat count at checkout. Your own seat is claimed automatically; assign the rest
+to teammates by email from the Polar customer portal, and each of them
+receives their own key when they claim the seat.
 
-Larger team, or a question first? Same channel — we'll sort out volume pricing or
-a custom arrangement.
+Your purchase confirmation includes the priority support contact. Need a signed
+commercial support agreement for procurement? Email that address with your
+organization name and seat count and one will be issued for the term.
+
+Larger team, or a question first? [Open an issue on the GitHub
+repository](https://github.com/sethbang/markee/issues) or email
+howdy@sbang.dev — we'll sort out volume pricing or a custom arrangement.
 
 ## The honest version
 

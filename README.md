@@ -56,8 +56,9 @@ in Editor**, and your editor opens at that line.
 - Light + dark themes, following `prefers-color-scheme`, plus a **Preferences**
   window (⌘,) to override the theme, accent color, base font size, and load a
   custom CSS file.
-- Free and fully featured; nothing is gated. (An optional supporter license is
-  built in but switched off for now — there are no nudges until it launches.)
+- Free and fully featured; nothing is gated. An optional
+  [supporter license](https://markee.sbang.dev/support) silences the occasional
+  support nudge — pay what you want once, or $5 a year.
 - CLI launcher: `markee path/to/notes.md`.
 
 ## Install
