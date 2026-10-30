@@ -115,6 +115,7 @@ private struct PreviewContent: View {
             }
         }
         .focusedSceneValue(\.pinState, controller.pinState)
+        .focusedSceneValue(\.canQuickEdit, controller.quickEditMenuEnabled)
     }
 
     private func configureWindow(_ window: NSWindow) {
@@ -127,6 +128,7 @@ private struct PreviewContent: View {
         }
         window.isMovableByWindowBackground = false
         controller.applyInitialPinStateIfNeeded()
+        controller.guardClose(of: window)
     }
 }
 

@@ -14,6 +14,9 @@ enum BridgeMessage: Equatable {
     case docStats(words: Int, minutes: Int)
     case findResult(current: Int, total: Int)
     case navigate(path: String, fragment: String, newWindow: Bool)
+    case blockEdit(start: Int, end: Int, original: String, replacement: String)
+    case editState(open: Bool, dirty: Bool, focused: Bool)
+    case contextBlock(label: String?, editable: Bool, line: Int?)
 
     /// Nil for an unknown kind or a message missing a required field.
     init?(body: Any) {
@@ -48,6 +51,20 @@ enum BridgeMessage: Equatable {
             self = .navigate(path: path,
                              fragment: body["fragment"] as? String ?? "",
                              newWindow: body["newWindow"] as? Bool ?? false)
+        case "blockEdit":
+            guard let start = body["start"] as? Int,
+                  let end = body["end"] as? Int,
+                  let original = body["original"] as? String,
+                  let replacement = body["replacement"] as? String else { return nil }
+            self = .blockEdit(start: start, end: end, original: original, replacement: replacement)
+        case "editState":
+            self = .editState(open: body["open"] as? Bool ?? false,
+                              dirty: body["dirty"] as? Bool ?? false,
+                              focused: body["focused"] as? Bool ?? false)
+        case "contextBlock":
+            self = .contextBlock(label: body["label"] as? String,
+                                 editable: body["editable"] as? Bool ?? false,
+                                 line: body["line"] as? Int)
         default:
             return nil
         }

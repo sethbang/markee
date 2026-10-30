@@ -45,6 +45,7 @@ in Editor**, and your editor opens at that line.
 - **Interactive task-list checkboxes** that write back to the source file.
 - **Open in Editor at Current Heading** — ⌥⌘E or right-click an outline row
   to jump to that heading's source line in your editor.
+- **Quick Edit** (⌘↩): select text and fix it in place: the block turns into its Markdown, ⌘↩ saves. For anything bigger, Open in Editor.
 - Outline sidebar with live active-heading highlight (⌘⌥\\ to toggle).
 - Export Standalone HTML with inlined CSS + images (⌘E).
 - ⌘F find in preview, ⌘P print or save as PDF.
@@ -123,6 +124,7 @@ it explicitly.
 | ⌘E | Export Standalone HTML |
 | ⇧⌘E | Export PDF |
 | ⌥⌘E | Open in Editor at current heading |
+| ⌘↩ | Quick Edit the selected block (⌘↩ again saves, Esc cancels) |
 | ⇧⌘C | Copy Markdown source |
 | ⌥⌘C | Copy reflowed Markdown (soft-wrapped paragraphs unwrapped) |
 | ⇧⌥⌘C | Copy as rendered plain text |
@@ -160,7 +162,7 @@ use a GUI build such as `mvim`.
 ```sh
 just test         # swift test + node --test (Swift + JS)
 just test-swift   # Swift unit tests (XCTest)
-just test-js      # JS helper, render-snapshot, source-line, wiki-link and reflow tests
+just test-js      # JS helper, render-snapshot, source-line, wiki-link, reflow and Quick Edit tests
 just clean        # nuke .build, Markee.app, and Resources/web/vendor
 just dev          # launch with the Debug menu (MARKEE_DEV_TOOLS=1) and forced supporter state
 just reset        # wipe local state + relaunch a fresh, un-licensed install
@@ -180,10 +182,12 @@ Sources/MarkeeKit/     Shared library: renderer, scheme handlers, file reader
 Sources/MarkeeQuickLookPreview/    Quick Look preview extension (.appex)
 Sources/MarkeeQuickLookThumbnail/  Quick Look thumbnail extension (.appex)
 Resources/web/         HTML/JS/CSS shipped into the bundle
-  template.html        Loads vendor + util + render-core + reflow + app (strict CSP)
+  template.html        Loads vendor + util + render-core + reflow + quick-edit-core + app + quick-edit (strict CSP)
   app.js               Renderer glue, scroll preservation, message bridge
   render-core.js       markdown-it pipeline + front matter + source lines (also used by Node tests)
   reflow.js            Copy Reflowed Markdown: unwraps soft-wrapped paragraphs
+  quick-edit-core.js   Quick Edit's pure helpers (importable by Node tests)
+  quick-edit.js        Quick Edit: the in-place block editor
   util.js              Pure helpers (importable by Node tests)
   theme.css            Light/dark theme
   vendor/              Fetched at build time, not committed

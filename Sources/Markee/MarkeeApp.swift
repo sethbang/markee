@@ -84,6 +84,7 @@ struct MarkeeApp: App {
                     NotificationCenter.default.post(name: .openInEditor, object: nil)
                 }
                 .keyboardShortcut("E", modifiers: [.command, .option])
+                QuickEditMenuButton()
                 Divider()
                 Button("Copy Markdown Source") {
                     NotificationCenter.default.post(name: .copyMarkdownSource, object: nil)
@@ -135,11 +136,39 @@ struct MarkeeApp: App {
     }
 }
 
+/// The key window's `PreviewController.quickEditMenuEnabled`, for the menu item.
+private struct CanQuickEditKey: FocusedValueKey {
+    typealias Value = Bool
+}
+
+extension FocusedValues {
+    var canQuickEdit: Bool? {
+        get { self[CanQuickEditKey.self] }
+        set { self[CanQuickEditKey.self] = newValue }
+    }
+}
+
+/// ⌘↩, greyed out when the key window's file can't be written and no edit
+/// is open (spec call #11), or no document window is focused. A View, not inline in the App, so
+/// `@FocusedValue` tracks the focused scene.
+private struct QuickEditMenuButton: View {
+    @FocusedValue(\.canQuickEdit) private var canQuickEdit: Bool?
+
+    var body: some View {
+        Button("Quick Edit") {
+            NotificationCenter.default.post(name: .quickEdit, object: nil)
+        }
+        .keyboardShortcut(.return, modifiers: [.command])
+        .disabled(canQuickEdit != true)
+    }
+}
+
 extension Notification.Name {
     static let toggleOutline = Notification.Name("MarkeeToggleOutline")
     static let exportHTML = Notification.Name("MarkeeExportHTML")
     static let exportPDF = Notification.Name("MarkeeExportPDF")
     static let openInEditor = Notification.Name("MarkeeOpenInEditor")
+    static let quickEdit = Notification.Name("MarkeeQuickEdit")
     static let findInPreview = Notification.Name("MarkeeFindInPreview")
     static let printPreview = Notification.Name("MarkeePrintPreview")
     static let zoomIn = Notification.Name("MarkeeZoomIn")
@@ -170,6 +199,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // document window appears.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
+    }
+
+    /// One prompt per window with an unsaved Quick Edit; Keep Editing in any
+    /// of them cancels the quit.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        MainActor.assumeIsolated {
+            PreviewController.live.allObjects.allSatisfy { $0.confirmDiscardQuickEdit() }
+                ? .terminateNow : .terminateCancel
+        }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
