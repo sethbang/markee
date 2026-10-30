@@ -49,19 +49,154 @@
         return { body: parts.body, lineCount: parts.lineCount };
     }
 
-    // Stamp `data-line` (0-based line in the ORIGINAL file: env.lineOffset is the
-    // front-matter line count) onto task items and headings, straight from the
-    // parser's token maps. Positional pairing of a hand-rolled line scan with the
-    // DOM drifted on blockquotes, fences in list items, HTML blocks and front
-    // matter, so a checkbox click could rewrite the wrong line.
+    const RANGE_TOKENS = new Set([
+        "paragraph_open", "heading_open", "list_item_open", "bullet_list_open", "ordered_list_open", "blockquote_open", "table_open",
+        "hr", "dl_open", "dt_open", "dd_open"
+    ]);
+
+    const VOID_ELEMENTS = new Set([
+        "area", "base", "br", "col", "embed", "frame", "hr", "img", "input", "keygen", "link", "meta", "param",
+        "source", "track", "wbr"
+    ]);
+    const HTML_TOKEN = /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\?[\s\S]*?\?>|<![^>]*>|<(\/?)([A-Za-z][A-Za-z0-9:-]*)((?:"[^"]*"|'[^']*'|[^<>"'])*)>/g;
+
+    const MAX_HTML_BLOCK = 100000;
+
+    // Calls visit(tag, closing, isVoid) for each tag in `html`, lower-cased;
+    // stops early when visit returns false (and then returns false). A
+    // trailing `/` only self-closes void elements and svg/math content; on any
+    // other tag HTML parsers ignore it, so `<div/>` is an open tag.
+    function scanTags(html, visit) {
+        const re = new RegExp(HTML_TOKEN.source, "g");
+        let m;
+        let foreign = 0;
+        while ((m = re.exec(html)) !== null) {
+            if (!m[2]) continue;
+            const tag = m[2].toLowerCase();
+            const closing = !!m[1];
+            const slash = /\/\s*$/.test(m[3]);
+            const root = tag === "svg" || tag === "math";
+            const isVoid = !closing && (VOID_ELEMENTS.has(tag) || (slash && (root || foreign > 0)));
+            if (root) foreign = closing ? Math.max(0, foreign - 1) : (isVoid ? foreign : foreign + 1);
+            if (visit(tag, closing, isVoid) === false) return false;
+        }
+        return true;
+    }
+
+    // True when every tag in `html` closes inside it and something visible is
+    // targetable, so a wrapper around the block never splits a construct.
+    function isSelfContainedHtml(html) {
+        html = String(html);
+        if (html.length > MAX_HTML_BLOCK) return false;
+        const stack = [];
+        let tags = 0;
+        const balanced = scanTags(html, function (tag, closing, isVoid) {
+            tags++;
+            if (closing) return stack.pop() === tag;
+            if (!isVoid) stack.push(tag);
+        });
+        return balanced && tags > 0 && stack.length === 0;
+    }
+
+    function isBlankAtDepth(line, depth) {
+        for (let i = 0; i < depth; i++) line = line.replace(/^[ \t]*>[ \t]?/, "");
+        return line.trim() === "";
+    }
+
+    function trackOpenTags(openTags, html, level) {
+        scanTags(html, function (tag, closing, isVoid) {
+            if (closing) {
+                for (let i = openTags.length - 1; i >= 0; i--) {
+                    if (openTags[i].tag === tag) { openTags.length = i; break; }
+                }
+            } else if (!isVoid) {
+                openTags.push({ tag: tag, level: level });
+            }
+        });
+    }
+
+    // A rendered block's stamp attributes. `env.stampKey` (a per-render random
+    // value from app.js) marks the stamps render-core emitted; app.js drops
+    // data-line / data-line-end from anything without it, so raw HTML can't
+    // forge a source range. No key (Node tests): no marker.
+    function stampAttrs(t, env) {
+        const offset = (env && env.lineOffset) || 0;
+        const key = env && env.stampKey;
+        return ' data-line="' + (t.map[0] + offset) + '" data-line-end="' + (t.map[1] + offset) + '"' +
+            (key ? ' data-markee-stamp="' + escapeHtml(key) + '"' : "");
+    }
+
+    // Stamp `data-line` / `data-line-end` (0-based, end exclusive, in the ORIGINAL
+    // file: env.lineOffset is the front-matter line count) onto each visible
+    // RANGE_TOKENS block, the <pre> of fenced/indented code, and wrapped raw HTML,
+    // straight from the parser's token maps. Inside footnotes only task items and
+    // headings are stamped. Positional pairing of a hand-rolled
+    // line scan with the DOM drifted on blockquotes, fences in list items, HTML
+    // blocks and front matter, so a checkbox click could rewrite the wrong line.
     function sourceLinePlugin(md) {
         md.core.ruler.push("markee_source_lines", function (state) {
             const offset = (state.env && state.env.lineOffset) || 0;
+            const key = state.env && state.env.stampKey;
+            const lines = state.src.split("\n");
+            let inFootnote = false;
+            // Tags left open by earlier partial html_blocks, across the whole
+            // document. A wrapper <div> inside one (<p>, <details>, <table>,
+            // <ul>) would close or restructure it, so nothing wraps until the
+            // context closes. Optional end tags make this overstate: safe.
+            // Levels never decrease bottom to top, so popping from the top suffices.
+            const openTags = [];
+            let unknown = false;
+            let quoteDepth = 0;
             for (const t of state.tokens) {
-                if (!t.map) continue;
+                if (t.nesting === -1) {
+                    while (openTags.length && openTags[openTags.length - 1].level > t.level) openTags.pop();
+                }
+                if (t.type === "html_block") {
+                    const contained = !unknown && isSelfContainedHtml(t.content);
+                    t.meta = { wrap: contained && !inFootnote && !!t.map && openTags.length === 0 };
+                    if (!contained && t.content.length > MAX_HTML_BLOCK) unknown = true;
+                    else if (!contained) trackOpenTags(openTags, t.content, t.level);
+                }
+                if (t.type === "footnote_open") inFootnote = true;
+                else if (t.type === "footnote_close") inFootnote = false;
+                else if (t.type === "blockquote_open") quoteDepth++;
+                else if (t.type === "blockquote_close") quoteDepth--;
+                if (!t.map || t.hidden || !RANGE_TOKENS.has(t.type)) continue;
+                // Task items and headings keep their stamp inside footnotes so
+                // checkbox write-back and the outline behave as before.
                 const isTask = t.type === "list_item_open" && /\btask-list-item\b/.test(t.attrGet("class") || "");
-                if (isTask || t.type === "heading_open") t.attrSet("data-line", String(t.map[0] + offset));
+                if (inFootnote && !isTask && t.type !== "heading_open") continue;
+                // markdown-it-deflist gives <dt> an empty map [n, n].
+                let end = Math.max(t.map[1], t.map[0] + 1);
+                // A list's (and a loose item's) map swallows the blank lines
+                // before the next block; inside a blockquote those read ">".
+                // Only the list's own quote markers make a line blank: a
+                // trailing ">" of a quote nested in the item is content.
+                if (t.type === "bullet_list_open" || t.type === "ordered_list_open" || t.type === "list_item_open") {
+                    while (end - t.map[0] > 1 && isBlankAtDepth(lines[end - 1] || "", quoteDepth)) end--;
+                }
+                t.attrSet("data-line", String(t.map[0] + offset));
+                t.attrSet("data-line-end", String(end + offset));
+                if (key) t.attrSet("data-markee-stamp", key);
             }
+        });
+        const innerHtmlBlock = md.renderer.rules.html_block || function (tokens, idx) { return tokens[idx].content; };
+        md.renderer.rules.html_block = function (tokens, idx, options, env, slf) {
+            const html = innerHtmlBlock(tokens, idx, options, env, slf);
+            const t = tokens[idx];
+            if (!t.meta || !t.meta.wrap) return html;
+            return '<div class="markee-html-block"' + stampAttrs(t, env) + ">" + html + "</div>";
+        };
+        // The default fence/code_block rules drop token attrs when highlight returns
+        // a `<pre`, or put them on <code>; inject on the outer <pre> instead.
+        ["fence", "code_block"].forEach(function (rule) {
+            const inner = md.renderer.rules[rule];
+            md.renderer.rules[rule] = function (tokens, idx, options, env, slf) {
+                const html = inner(tokens, idx, options, env, slf);
+                const t = tokens[idx];
+                if (!t.map || html.indexOf("<pre") !== 0) return html;
+                return "<pre" + stampAttrs(t, env) + html.slice(4);
+            };
         });
     }
 
@@ -191,8 +326,9 @@
         use(deps.footnote);
         use(deps.deflist);
         // Allowlist: unrestricted, `{onmouseover="…"}` emits event-handler
-        // attributes — script injection independent of `html: true`.
-        use(deps.attrs, { allowedAttributes: ["id", "class", /^data-.*$/, "width", "height", "lang", "title", "dir"] });
+        // attributes — script injection independent of `html: true`. The
+        // source-range stamps are render-core's alone.
+        use(deps.attrs, { allowedAttributes: ["id", "class", /^data-(?!line$|line-end$|markee-stamp$)/, "width", "height", "lang", "title", "dir"] });
         use(deps.taskLists, { enabled: true, label: true });
         m.use(gfmAutolinkPlugin);
         m.use(wikiLinkPlugin);
@@ -203,6 +339,7 @@
     return {
         createRenderer: createRenderer,
         escapeHtml: escapeHtml,
+        isSelfContainedHtml: isSelfContainedHtml,
         splitFrontMatter: splitFrontMatter,
         stripFrontMatter: stripFrontMatter
     };

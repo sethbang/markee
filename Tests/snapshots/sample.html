@@ -1,31 +1,31 @@
-<h1 data-line="1">Markee Sample</h1>
-<p>A quick fixture covering the v1 feature set.</p>
-<h2 data-line="5">Text formatting</h2>
-<p>Plain <strong>bold</strong>, <em>italic</em>, <s>strikethrough</s>, <code>inline code</code>, and a <a href="https://example.com">link</a>.</p>
-<blockquote>
-<p>A blockquote. Useful for asides.</p>
+<h1 data-line="1" data-line-end="2">Markee Sample</h1>
+<p data-line="3" data-line-end="4">A quick fixture covering the v1 feature set.</p>
+<h2 data-line="5" data-line-end="6">Text formatting</h2>
+<p data-line="7" data-line-end="8">Plain <strong>bold</strong>, <em>italic</em>, <s>strikethrough</s>, <code>inline code</code>, and a <a href="https://example.com">link</a>.</p>
+<blockquote data-line="9" data-line-end="10">
+<p data-line="9" data-line-end="10">A blockquote. Useful for asides.</p>
 </blockquote>
-<h2 data-line="11">Lists</h2>
-<ul>
-<li>Bullet one</li>
-<li>Bullet two
-<ul>
-<li>Nested</li>
+<h2 data-line="11" data-line-end="12">Lists</h2>
+<ul data-line="13" data-line-end="16">
+<li data-line="13" data-line-end="14">Bullet one</li>
+<li data-line="14" data-line-end="16">Bullet two
+<ul data-line="15" data-line-end="16">
+<li data-line="15" data-line-end="16">Nested</li>
 </ul>
 </li>
 </ul>
-<ol>
-<li>Ordered</li>
-<li>Ordered</li>
+<ol data-line="17" data-line-end="19">
+<li data-line="17" data-line-end="18">Ordered</li>
+<li data-line="18" data-line-end="19">Ordered</li>
 </ol>
-<h2 data-line="20">Task list</h2>
-<ul class="contains-task-list">
-<li class="task-list-item enabled" data-line="22"><label><input class="task-list-item-checkbox" checked=""type="checkbox"> Watch file</label></li>
-<li class="task-list-item enabled" data-line="23"><label><input class="task-list-item-checkbox" checked=""type="checkbox"> Re-render on save</label></li>
-<li class="task-list-item enabled" data-line="24"><label><input class="task-list-item-checkbox"type="checkbox"> Notarize for distribution</label></li>
+<h2 data-line="20" data-line-end="21">Task list</h2>
+<ul class="contains-task-list" data-line="22" data-line-end="25">
+<li class="task-list-item enabled" data-line="22" data-line-end="23"><label><input class="task-list-item-checkbox" checked=""type="checkbox"> Watch file</label></li>
+<li class="task-list-item enabled" data-line="23" data-line-end="24"><label><input class="task-list-item-checkbox" checked=""type="checkbox"> Re-render on save</label></li>
+<li class="task-list-item enabled" data-line="24" data-line-end="25"><label><input class="task-list-item-checkbox"type="checkbox"> Notarize for distribution</label></li>
 </ul>
-<h2 data-line="26">Table</h2>
-<table>
+<h2 data-line="26" data-line-end="27">Table</h2>
+<table data-line="28" data-line-end="34">
 <thead>
 <tr>
 <th>Feature</th>
@@ -51,34 +51,34 @@
 </tr>
 </tbody>
 </table>
-<h2 data-line="35">Code</h2>
-<pre class="hljs"><code>def hello(name: str) -&gt; str:
+<h2 data-line="35" data-line-end="36">Code</h2>
+<pre data-line="37" data-line-end="41" class="hljs"><code>def hello(name: str) -&gt; str:
     return f&quot;Hello, {name}!&quot;
 </code></pre>
-<h2 data-line="42">Math</h2>
-<p>Inline: $a^2 + b^2 = c^2$.</p>
-<p>Display:</p>
-<p>$$
+<h2 data-line="42" data-line-end="43">Math</h2>
+<p data-line="44" data-line-end="45">Inline: $a^2 + b^2 = c^2$.</p>
+<p data-line="46" data-line-end="47">Display:</p>
+<p data-line="48" data-line-end="51">$$
 \int_0^\infty e^{-x^2},dx = \frac{\sqrt{\pi}}{2}
 $$</p>
-<h2 data-line="52">Mermaid</h2>
-<pre class="mermaid">graph LR
+<h2 data-line="52" data-line-end="53">Mermaid</h2>
+<pre data-line="54" data-line-end="61" class="mermaid">graph LR
     A[Edit .md] --&gt;|save| B(FSEvents)
     B --&gt; C{Markee}
     C --&gt; D[Re-render]
     D --&gt; A
 </pre>
-<h2 data-line="62">Footnote</h2>
-<p>Here is a claim that needs a citation.<sup class="footnote-ref"><a href="#fn1" id="fnref1">[1]</a></sup></p>
-<h2 data-line="68">Definition list</h2>
-<dl>
-<dt>Markdown</dt>
-<dd>A lightweight markup language.</dd>
-<dt>WKWebView</dt>
-<dd>Apple’s modern WebView, used here for rendering.</dd>
+<h2 data-line="62" data-line-end="63">Footnote</h2>
+<p data-line="64" data-line-end="65">Here is a claim that needs a citation.<sup class="footnote-ref"><a href="#fn1" id="fnref1">[1]</a></sup></p>
+<h2 data-line="68" data-line-end="69">Definition list</h2>
+<dl data-line="70" data-line-end="76">
+<dt data-line="70" data-line-end="71">Markdown</dt>
+<dd data-line="71" data-line-end="73">A lightweight markup language.</dd>
+<dt data-line="73" data-line-end="74">WKWebView</dt>
+<dd data-line="73" data-line-end="76">Apple’s modern WebView, used here for rendering.</dd>
 </dl>
-<h2 data-line="76">Cross-document links</h2>
-<p>A wiki link to <span class="markee-wikilink-broken" title="Unresolved link: sample">sample</span> and an unresolved one to <span class="markee-wikilink-broken" title="Unresolved link: Nonexistent Note">Nonexistent Note</span>.
+<h2 data-line="76" data-line-end="77">Cross-document links</h2>
+<p data-line="78" data-line-end="80">A wiki link to <span class="markee-wikilink-broken" title="Unresolved link: sample">sample</span> and an unresolved one to <span class="markee-wikilink-broken" title="Unresolved link: Nonexistent Note">Nonexistent Note</span>.
 A relative link to <a href="./other.md">another doc</a>.</p>
 <hr class="footnotes-sep">
 <section class="footnotes">
