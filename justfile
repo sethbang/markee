@@ -97,9 +97,9 @@ test: test-swift test-js
 test-swift:
     swift test
 
-# JS helper, render-snapshot/source-line, wiki-link and reflow tests.
+# JS helper, render-snapshot/source-line, wiki-link, reflow and Quick Edit tests.
 test-js:
-    node --test Tests/util.test.js Tests/render.test.js Tests/wikilink.test.js Tests/reflow.test.js
+    node --test Tests/util.test.js Tests/render.test.js Tests/wikilink.test.js Tests/reflow.test.js Tests/quickedit.test.js
 
 # Remove build products and the vendored JS libraries.
 clean:
