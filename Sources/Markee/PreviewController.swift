@@ -75,9 +75,12 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
     private lazy var pinController = WindowPinController(
         windowProvider: { [weak self] in self?.webView.window })
 
-    /// - Parameter webRoot: override for the bundle's `web/` directory (tests
-    ///   only — the xctest host bundle has none).
-    init(fileURL: URL, webRoot: URL? = nil) {
+    /// - Parameters:
+    ///   - webRoot: override for the bundle's `web/` directory (tests only —
+    ///     the xctest host bundle has none).
+    ///   - appBundleURL: the bundle whose files are never Quick-Editable
+    ///     (tests only; the xctest host isn't the app).
+    init(fileURL: URL, webRoot: URL? = nil, appBundleURL: URL = Bundle.main.bundleURL) {
         self.fileURL = fileURL
         self.bundleHandler = webRoot.map(BundleSchemeHandler.init(webRoot:)) ?? BundleSchemeHandler()
         self.workspace = WorkspaceModel(documentURL: fileURL)
@@ -99,6 +102,7 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
 
         self.webView = MarkeeWebView(frame: .zero, configuration: config)
         self.history = NavigationHistory(initial: fileURL)
+        self.appBundleURL = appBundleURL
         super.init()
 
         if SettingsStore.shared.defaultFloatOnTop {
@@ -106,6 +110,7 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
         }
 
         self.webView.controller = self
+        Self.live.add(self)
         self.workspace.onIndexUpdated = { [weak self] in self?.reRenderForIndexIfNeeded() }
 
         userContent.add(WeakScriptMessageHandler(target: self), name: "markee")
@@ -132,6 +137,7 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
             (.exportPDF, { $0.exportPDF() }),
             (.printPreview, { $0.printPreview() }),
             (.openInEditor, { $0.openInEditor(atLine: $0.currentHeadingLine()) }),
+            (.quickEdit, { $0.performQuickEditCommand() }),
             (.findInPreview, { $0.showFindBar = true }),
             (.findNext, { $0.findNextOrReveal(backwards: false) }),
             (.findPrevious, { $0.findNextOrReveal(backwards: true) }),
@@ -174,6 +180,7 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
 
     /// Navigate the current window to a file picked in the tree.
     func openFromTree(_ url: URL) {
+        guard confirmDiscardQuickEdit() else { return }
         pushAndNavigate(to: url, fragment: "")
     }
 
@@ -184,10 +191,11 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
         panel.allowsMultipleSelection = false
         panel.prompt = "Set Workspace"
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        guard setWorkspaceRoot(url) else {
+        guard canSetWorkspaceRoot(url) else {
             errorBanner = "\(fileURL.lastPathComponent) isn't inside \(url.lastPathComponent) — choose a folder that contains it."
             return
         }
+        guard setWorkspaceRoot(url) else { return }
         sidebarMode = .files
         showOutline = true
     }
@@ -202,10 +210,11 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
     /// Re-root the workspace at `folder`, which must contain the open document
     /// (its `<base href>` and the sandbox are both relative to the root).
     /// Re-renders now with an empty wiki index, then again once the new index
-    /// lands, so links never resolve against the previous root.
+    /// lands, so links never resolve against the previous root. False (and
+    /// nothing changes) if the user keeps an unsaved Quick Edit.
     @discardableResult
     func setWorkspaceRoot(_ folder: URL) -> Bool {
-        guard canSetWorkspaceRoot(folder) else { return false }
+        guard canSetWorkspaceRoot(folder), confirmDiscardQuickEdit() else { return false }
         workspace.setRoot(folder)
         docHandler.setDocRoot(workspace.root)
         indexPopulated = false
@@ -239,6 +248,7 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
     }
 
     func chooseSearchResult(_ result: WorkspaceSearch.Result) {
+        guard confirmDiscardQuickEdit() else { return }
         showSearchPalette = false
         searchQuery = ""
         searchResults = []
@@ -257,6 +267,9 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
     private func reRenderForIndexIfNeeded() {
         guard !indexPopulated, !workspace.wikiIndex.isEmpty else { return }
         indexPopulated = true
+        // Not a disk change, so no notice: the re-render that closes the edit
+        // carries the index.
+        if quickEdit.open { return }
         loadFromDisk(reason: "index-ready")
     }
 
@@ -281,12 +294,31 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
             // Cleared by the next successful load if the file comes back.
             self?.errorBanner = "\(name) was moved or deleted. Markee will reload it if it reappears."
         }, onChange: { [weak self] in
-            UsageTracker.shared.recordRerender()
-            self?.loadFromDisk(reason: "fs-change")
+            guard let self else { return }
+            let ownWrite = self.consumeSelfWrite()
+            if self.quickEdit.open {
+                self.noticeDiskChangeDuringEdit()
+                return
+            }
+            if !ownWrite { UsageTracker.shared.recordRerender() }
+            self.loadFromDisk(reason: "fs-change")
         })
     }
 
+    /// Bytes Markee itself last wrote (task toggle, Quick Edit save): the
+    /// watcher event they cause re-renders but isn't a "re-render watched".
+    private var lastSelfWrite: Data?
+
+    /// Whether the file still holds exactly the bytes Markee last wrote.
+    /// One comparison per write: any later event is an outside change.
+    private func consumeSelfWrite() -> Bool {
+        guard let written = lastSelfWrite else { return false }
+        lastSelfWrite = nil
+        return (try? Data(contentsOf: fileURL.resolvingSymlinksInPath())) == written
+    }
+
     private func loadFromDisk(reason: String) {
+        refreshCanQuickEdit()
         guard let source = readCurrentFile() else { return }
         self.errorBanner = nil
         self.lastGoodSource = source
@@ -308,6 +340,7 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
     /// call expression.
     private func callJS(_ function: String, _ args: Any...,
                         completion: (@MainActor @Sendable (Any?, Error?) -> Void)? = nil) {
+        onJSCall?(function, args)
         guard let data = try? JSONSerialization.data(withJSONObject: args, options: [.fragmentsAllowed]),
               let list = String(data: data, encoding: .utf8) else { return }
         let argList = String(list.dropFirst().dropLast())   // strip the array brackets
@@ -367,7 +400,8 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
 
     /// ⌘R — manually re-read and re-render the file. Same path the file
     /// watcher drives; a fallback for the rare save the watcher misses.
-    private func reload() {
+    func reload() {
+        guard confirmDiscardQuickEdit() else { return }
         if !templateLoaded && !recentContentCrashes.isEmpty {
             recentContentCrashes = []
             reloadTemplateAndRerender()
@@ -585,6 +619,15 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
             findNotFound = (total == 0 && current == 0)
         case .navigate(let path, let fragment, let newWindow):
             handleNavigate(path: path, fragment: fragment, newWindow: newWindow)
+        case .blockEdit(let start, let end, let original, let replacement):
+            // A save that arrives after the edit closed (a repeated ⌘↩ racing
+            // the first save's resolve) would apply the same edit twice.
+            guard quickEdit.open else { return }
+            saveBlockEdit(start: start, end: end, original: original, replacement: replacement)
+        case .editState(let open, let dirty, let focused):
+            updateQuickEditState(QuickEditState(open: open, dirty: dirty, focused: focused))
+        case .contextBlock(let label, let editable, let line):
+            lastContextBlock = QuickEditContextBlock(label: label, editable: editable, line: line)
         }
     }
 
@@ -592,8 +635,11 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
     /// Re-reads the file first and bails if the line no longer looks like a task
     /// item (it drifted between click and write) — the only protection against
     /// clobbering a concurrent edit in another editor. Any bail re-renders from
-    /// disk so the checkbox the click already flipped snaps back to the truth.
+    /// disk so the checkbox the click already flipped snaps back to the truth;
+    /// while a Quick Edit is open it only raises the page's notice, and closing
+    /// the edit re-renders.
     private func toggleTask(atLine line: Int, checked: Bool) {
+        defer { refreshCanQuickEdit() }
         // Write through symlinks: an atomic write to the link itself would
         // replace it with a regular file and leave the real target unchanged.
         let target = fileURL.resolvingSymlinksInPath()
@@ -601,14 +647,25 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
             let decoded = try readDecodedFile(at: target)
             guard let newText = TaskToggle.toggledText(decoded.text, line: line, checked: checked),
                   let data = decoded.encode(newText) else {
-                loadFromDisk(reason: "task-toggle-bail")
+                reloadUnlessEditing(reason: "task-toggle-bail")
                 return
             }
             try data.write(to: target, options: .atomic)
+            lastSelfWrite = data
             if checked { UsageTracker.shared.recordBoxChecked() }
         } catch {
-            loadFromDisk(reason: "task-toggle-failed")
+            reloadUnlessEditing(reason: "task-toggle-failed")
             self.errorBanner = "Failed to toggle task: \(error.localizedDescription)"
+        }
+    }
+
+    /// A re-render rebuilds #content and would take an open Quick Edit (and
+    /// its unsaved text) with it; while one is open, flag the page instead.
+    private func reloadUnlessEditing(reason: String) {
+        if quickEdit.open {
+            noticeDiskChangeDuringEdit()
+        } else {
+            loadFromDisk(reason: reason)
         }
     }
 
@@ -682,7 +739,16 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
 
     private func reloadTemplateAndRerender() {
         templateLoaded = false
-        pendingRender = lastGoodSource.isEmpty ? pendingRender : lastGoodSource
+        // The fresh page has no edit and never posts editState open:false.
+        quickEdit = QuickEditState()
+        // The file may have changed while the page was dead (the watcher's
+        // renders went nowhere), so the rebuilt page shows what's on disk now.
+        if let fresh = readCurrentFile() {
+            lastGoodSource = fresh
+            pendingRender = fresh
+        } else if !lastGoodSource.isEmpty {
+            pendingRender = lastGoodSource
+        }
         loadTemplate()
     }
 
@@ -725,6 +791,7 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
 
     /// A forward navigation (link, tree, search result): record it, then go.
     private func pushAndNavigate(to url: URL, fragment: String) {
+        guard confirmDiscardQuickEdit() else { return }
         history.push(url)
         navigate(to: url, fragment: fragment)
     }
@@ -733,6 +800,7 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
     /// link clicks (push) and the back/forward commands (no push).
     private func navigate(to url: URL, fragment: String) {
         self.fileURL = url
+        lastSelfWrite = nil
         self.pendingScrollTo = fragment
         self.pendingNavigated = true
         // Keep AppKit's window proxy honest with the navigated document.
@@ -747,12 +815,164 @@ final class PreviewController: NSObject, ObservableObject, WKScriptMessageHandle
     var canGoForward: Bool { history.canGoForward }
 
     func goBack() {
-        guard let url = history.back() else { return }
+        guard history.canGoBack, confirmDiscardQuickEdit(), let url = history.back() else { return }
         navigate(to: url, fragment: "")
     }
     func goForward() {
-        guard let url = history.forward() else { return }
+        guard history.canGoForward, confirmDiscardQuickEdit(), let url = history.forward() else { return }
         navigate(to: url, fragment: "")
+    }
+
+    // MARK: - Quick Edit
+
+    @Published private(set) var quickEdit = QuickEditState()
+    @Published private(set) var canQuickEdit = false
+    /// The main-menu item (⌘↩'s only route) stays enabled while an edit is
+    /// open, so one refused for permissions can still be saved once fixed.
+    var quickEditMenuEnabled: Bool { canQuickEdit || quickEdit.open }
+    /// Tests only: observes every `callJS`.
+    var onJSCall: ((String, [Any]) -> Void)?
+    private(set) var lastContextBlock: QuickEditContextBlock?
+    /// Every open window's controller, for the quit check. Weak: no removal.
+    static let live = NSHashTable<PreviewController>.weakObjects()
+    var discardPrompt: () -> Bool = PreviewController.runDiscardAlert
+
+    /// Before leaving the document: true to proceed. Asks only when the open
+    /// edit has unsaved changes; Discard closes it here so a nested guard on
+    /// the same path doesn't ask twice.
+    func confirmDiscardQuickEdit() -> Bool {
+        guard quickEdit.needsDiscardConfirmation else {
+            // A clean edit closes silently; closing it here too keeps the
+            // page's own editState(open: false) from rendering a second time
+            // after the navigation or reload that follows.
+            if quickEdit.open {
+                quickEdit = QuickEditState()
+                callJS("cancelQuickEdit")
+            }
+            return true
+        }
+        webView.window?.makeKeyAndOrderFront(nil)
+        guard discardPrompt() else { return false }
+        // Cleared first so the page's closing editState doesn't re-render on
+        // top of the navigation or reload that follows.
+        quickEdit = QuickEditState()
+        callJS("cancelQuickEdit")
+        return true
+    }
+
+    private static func runDiscardAlert() -> Bool {
+        let alert = NSAlert()
+        alert.messageText = "Discard your unsaved edit?"
+        alert.addButton(withTitle: "Discard Changes")
+        alert.addButton(withTitle: "Keep Editing")
+        alert.buttons[1].keyEquivalent = "\u{1b}"
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    /// The block under the right-click, consumed by the menu it opened.
+    func takeContextBlock() -> QuickEditContextBlock? {
+        defer { lastContextBlock = nil }
+        return lastContextBlock
+    }
+
+    func beginQuickEditFromContextMenu() {
+        guard isFileWritable else { return }
+        callJS("beginQuickEdit", lastGoodSource, "context")
+    }
+
+    private lazy var closeGuard = WindowCloseGuard { [weak self] in
+        self?.confirmDiscardQuickEdit() ?? true
+    }
+
+    func guardClose(of window: NSWindow) {
+        closeGuard.install(on: window)
+    }
+
+    private var quickEditNoticedDiskChange = false
+
+    /// Writable on disk, and not the read-only bundled support doc (opened from
+    /// the signed app bundle, which the `readOnly` payload flag doesn't cover).
+    var isFileWritable: Bool {
+        let target = fileURL.resolvingSymlinksInPath()
+        let bundlePath = appBundleURL.resolvingSymlinksInPath().path
+        guard !target.path.hasPrefix(bundlePath == "/" ? "/" : bundlePath + "/") else { return false }
+        return FileManager.default.isWritableFile(atPath: target.path)
+    }
+
+    private let appBundleURL: URL
+
+    /// Mirrors `isFileWritable` for the menu's enablement (SwiftUI can't
+    /// observe the file system): refreshed on every load and after each write.
+    private func refreshCanQuickEdit() {
+        let writable = isFileWritable
+        if canQuickEdit != writable { canQuickEdit = writable }
+    }
+
+    /// ⌘↩ — start an edit, save the open one, or focus it, by state.
+    func performQuickEditCommand() {
+        switch QuickEditState.command(for: quickEdit, writable: isFileWritable) {
+        case .begin: callJS("beginQuickEdit", lastGoodSource, "auto")
+        case .save: callJS("saveQuickEdit")
+        case .focus: callJS("focusQuickEdit")
+        case nil: break
+        }
+    }
+
+    private func updateQuickEditState(_ new: QuickEditState) {
+        let wasOpen = quickEdit.open
+        quickEdit = new
+        if new.open && !wasOpen { quickEditNoticedDiskChange = false }
+        if wasOpen && !new.open { loadFromDisk(reason: "quick-edit-closed") }
+    }
+
+    /// Re-renders pause while an edit is open; the page shows a notice instead,
+    /// and closing the edit re-renders from disk.
+    private func noticeDiskChangeDuringEdit() {
+        guard !quickEditNoticedDiskChange else { return }
+        quickEditNoticedDiskChange = true
+        callJS("noticeQuickEdit", "disk-changed")
+    }
+
+    /// Replace the edited block's lines, but only if they still read what the
+    /// edit opened with — same re-read-then-write rule as `toggleTask`. The
+    /// page gets `{ok, reason}`: "conflict" (lines changed; the edit is
+    /// refused), "encoding" (the file's encoding can't hold the new text) or
+    /// "write" (read/write failed); the last two leave the edit retryable.
+    private func saveBlockEdit(start: Int, end: Int, original: String, replacement: String) {
+        defer { refreshCanQuickEdit() }
+        // An atomic write would replace even a read-only file in a writable
+        // folder, so permissions are re-checked rather than left to the write.
+        guard isFileWritable else {
+            callJS("resolveQuickEdit", ["ok": false, "reason": "write"])
+            errorBanner = "Can't save: \(fileURL.lastPathComponent) is read-only."
+            return
+        }
+        let target = fileURL.resolvingSymlinksInPath()
+        let previous = quickEdit
+        do {
+            let decoded = try readDecodedFile(at: target)
+            guard let newText = BlockEdit.replacing(decoded.text, start: start, end: end,
+                                                    expected: original, with: replacement) else {
+                callJS("resolveQuickEdit", ["ok": false, "reason": "conflict"])
+                return
+            }
+            guard let data = decoded.encode(newText) else {
+                callJS("resolveQuickEdit", ["ok": false, "reason": "encoding"])
+                return
+            }
+            // Cleared before the write so the watcher's event for our own write
+            // is an ordinary re-render, not an outside change during the edit.
+            quickEdit = QuickEditState()
+            try data.write(to: target, options: .atomic)
+            lastSelfWrite = data
+            callJS("resolveQuickEdit", ["ok": true])
+            loadFromDisk(reason: "quick-edit")
+        } catch {
+            // The page keeps the edit open, and won't re-post open:true.
+            quickEdit = previous
+            callJS("resolveQuickEdit", ["ok": false, "reason": "write"])
+            self.errorBanner = "Failed to save edit: \(error.localizedDescription)"
+        }
     }
 
     /// Scroll the WebView to a given heading id.

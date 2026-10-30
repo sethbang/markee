@@ -84,6 +84,7 @@ struct MarkeeApp: App {
                     NotificationCenter.default.post(name: .openInEditor, object: nil)
                 }
                 .keyboardShortcut("E", modifiers: [.command, .option])
+                QuickEditMenuButton()
                 Divider()
                 Button("Copy Markdown Source") {
                     NotificationCenter.default.post(name: .copyMarkdownSource, object: nil)
@@ -135,11 +136,39 @@ struct MarkeeApp: App {
     }
 }
 
+/// The key window's `PreviewController.quickEditMenuEnabled`, for the menu item.
+private struct CanQuickEditKey: FocusedValueKey {
+    typealias Value = Bool
+}
+
+extension FocusedValues {
+    var canQuickEdit: Bool? {
+        get { self[CanQuickEditKey.self] }
+        set { self[CanQuickEditKey.self] = newValue }
+    }
+}
+
+/// ⌘↩, greyed out when the key window's file can't be written and no edit
+/// is open (spec call #11), or no document window is focused. A View, not inline in the App, so
+/// `@FocusedValue` tracks the focused scene.
+private struct QuickEditMenuButton: View {
+    @FocusedValue(\.canQuickEdit) private var canQuickEdit: Bool?
+
+    var body: some View {
+        Button("Quick Edit") {
+            NotificationCenter.default.post(name: .quickEdit, object: nil)
+        }
+        .keyboardShortcut(.return, modifiers: [.command])
+        .disabled(canQuickEdit != true)
+    }
+}
+
 extension Notification.Name {
     static let toggleOutline = Notification.Name("MarkeeToggleOutline")
     static let exportHTML = Notification.Name("MarkeeExportHTML")
     static let exportPDF = Notification.Name("MarkeeExportPDF")
     static let openInEditor = Notification.Name("MarkeeOpenInEditor")
+    static let quickEdit = Notification.Name("MarkeeQuickEdit")
     static let findInPreview = Notification.Name("MarkeeFindInPreview")
     static let printPreview = Notification.Name("MarkeePrintPreview")
     static let zoomIn = Notification.Name("MarkeeZoomIn")
@@ -172,17 +201,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         false
     }
 
+    /// One prompt per window with an unsaved Quick Edit; Keep Editing in any
+    /// of them cancels the quit.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        MainActor.assumeIsolated {
+            PreviewController.live.allObjects.allSatisfy { $0.confirmDiscardQuickEdit() }
+                ? .terminateNow : .terminateCancel
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         Updater.shared.checkOnLaunch()
         EditorLauncher.warmCache()
         SupportController.shared.registerLaunch()
         UsageTracker.shared.recordActiveDay()
         // Resolve the bundled doc before consuming the trigger: consume stamps
-        // the 30-day clock, so ordering it first would "spend" the month in any
-        // context where the resource is absent (e.g. swift run, no app bundle).
-        guard let doc = Bundle.main.url(forResource: "Support Markee", withExtension: "md"),
-              SupportController.shared.consumeSupportDocTrigger()
-        else { return }
+        // the quiet-period clock, so ordering it first would "spend" the period
+        // in any context where the resource is absent (e.g. swift run, no app
+        // bundle). Observe usage only after, so a doc launch holds milestones
+        // off before the first stats emission can pick one.
+        let doc = Bundle.main.url(forResource: "Support Markee", withExtension: "md")
+        let opensDoc = doc != nil && SupportController.shared.consumeSupportDocTrigger()
+        SupportController.shared.observe(UsageTracker.shared)
+        guard opensDoc, let doc else { return }
         // Delayed so restored document windows settle first; the support doc
         // opens after them instead of racing window restoration.
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {

@@ -17,7 +17,7 @@ just reset          # wipe ALL local state + relaunch a fresh, un-licensed insta
 just reset-nudges   # like reset, but force the supporter nudges on immediately (no grace period)
 just reset-sandbox  # like reset-nudges, but point at the Polar sandbox (sources .env.local) for licensing tests
 just clean-install  # full from-scratch: remove + rebuild + reinstall + wipe + relaunch
-just test           # swift test + node --test (util, render, wikilink, reflow .test.js)
+just test           # swift test + node --test (util, render, wikilink, reflow, quickedit .test.js)
 just dev            # launch with the Debug menu (MARKEE_DEV_TOOLS=1) + forced nudge/supporter state
 just install        # builds, quits Markee, replaces /Applications/Markee.app
 just notarize       # builds, signs, notarizes, and staples (see "Signing & notarization")
@@ -69,18 +69,30 @@ two Quick Look extensions under `Contents/PlugIns/`.
     nudge-cadence logic, the `UserDefaults`-backed controller + key redemption,
     the SwiftUI surfaces (titlebar ♥ → `SupportDrawer` popover, menu, About
     credits), and the pure Polar wire format. Nothing is feature-gated; paying
-    only silences the throttled nudges (a monthly support doc) and removes the
-    heart. Activation hits Polar's public (unauthenticated) customer-portal
-    endpoint, so no API key ships in the app. `SupportConfig` reads
+    only silences the throttled nudges (a support doc at most every 14 days,
+    plus milestone celebrations from `SupportMilestones.swift`: the drawer opens
+    itself on the highest newly crossed threshold of a kind, and the lower tiers
+    it skipped are marked done unshown, deliberately, so nobody gets a backlog;
+    each other kind's top tier queues for a later day. At most one a day, never
+    on a launch that opens the support doc, in the key window only, re-picked
+    and stamped on display, closing itself after 8s unless hovered;
+    thresholds continue in fixed steps past the hand-picked list, never
+    geometrically) and removes the heart. Activation hits Polar's public
+    (unauthenticated) customer-portal endpoint, so no API key ships in the app. `SupportConfig` reads
     `MARKEE_POLAR_BASE_URL`/`MARKEE_POLAR_ORG_ID` from the environment to point
-    a local build at the Polar sandbox for testing. **Dormant until go-live:**
-    `SupportConfig.productionOrganizationID` is empty while the Polar org is in
-    test mode, which hides the whole supporter surface (heart, menu items,
-    monthly doc); restore it with the `/support` redirect and footer link at
-    licensing go-live.
+    a local build at the Polar sandbox for testing. **Kill switch:** blanking
+    `SupportConfig.productionOrganizationID` hides the whole supporter surface
+    (heart, menu items, support doc, milestones); pull the `/support` redirect
+    and footer link with it. Live since 1.3.0. Polar products: the one-time "Markee
+    License" + yearly "Markee Sustainer" (both on the `/support` checkout) and
+    the seat-based yearly "Markee Team License" (`/teams/checkout`). All three
+    carry the same license-key benefit, which **must keep an activation limit**:
+    the app redeems through `/activate`, and Polar 403s `/activate` for keys
+    without activations — which the app reports as "limit reached".
   - `UsageStats.swift` / `UsageTracker.swift` — local-only usage counters
     (documents previewed, re-renders watched, active days, boxes checked) shown
-    in the support drawer. File paths are stored only as salted, truncated SHA-256
+    in the support drawer. Markee's own writes (task toggle, Quick Edit save)
+    re-render but aren't "re-renders watched". File paths are stored only as salted, truncated SHA-256
     hashes (salt kept in the same defaults domain — it prevents lookup tables,
     not local guessing); nothing here is ever transmitted.
   - `SettingsStore.swift` / `SettingsView.swift` — Preferences window (Settings
@@ -97,6 +109,17 @@ two Quick Look extensions under `Contents/PlugIns/`.
     (centered filename, sidebar toggle, back/forward chevrons, support heart,
     word-count pill) and the `NSWindow` accessor that flips the titlebar flags.
   - `TaskToggle.swift` — pure checkbox-line rewrite behind task write-back.
+  - `BlockEdit.swift` / `QuickEditState.swift` / `WindowCloseGuard.swift` —
+    Quick Edit (⌘↩): the pure conflict-checked line-range replacement behind
+    write-back, the pure begin/save/focus decision plus the last `editState` /
+    `contextBlock` the page reported and `QuickEditMenuChoice` (the right-click
+    item: Edit Paragraph/List Item/List/Block/…, Open in Editor at This Line,
+    or nothing), and the window-delegate shim that vetoes a close over an
+    unsaved edit (forwards everything else to SwiftUI's delegate). Wiring lives
+    in `PreviewController` (⌘↩ command, `saveBlockEdit`, discard confirmation)
+    and `MarkeeWebView` (the context item). The main-menu item
+    (`QuickEditMenuButton` in `MarkeeApp`) is greyed through the
+    `canQuickEdit` focused-scene value, fed `quickEditMenuEnabled`.
   - `DebugCommands.swift` — Debug menu (only with `MARKEE_DEV_TOOLS=1`, i.e.
     `just dev`): licensing-state controls such as Deactivate This Mac.
   - `PreviewController+Export.swift` — print, Export PDF, Export HTML.
@@ -104,8 +127,11 @@ two Quick Look extensions under `Contents/PlugIns/`.
     message; the trust check stays in `userContentController`.
   - `NavigationPolicy.swift` — pure main-frame/link navigation decisions
     (template-only main frame, link hand-off, safe-to-open file types).
-  - `MarkeeWebView.swift` — `WKWebView` subclass extending the native
-    right-click menu (Copy Markdown Source, Reveal in Finder).
+  - `MarkeeWebView.swift` — `WKWebView` subclass reshaping the native
+    right-click menu (`arrange`: Quick Edit's Edit … / Open in Editor at This
+    Line first, a Copy As ▸ submenu under Copy, Reveal in Finder last; drops
+    WebKit's Copy Link with Highlight and Speech by their private
+    `WKMenuItemIdentifier…` strings).
   - `Updater.swift` — in-app updater (checks GitHub Releases, downloads,
     validates, swaps in place, relaunches); `EditorLauncher.swift` —
     open-in-editor binary resolution + per-editor line-jump argv.
@@ -116,19 +142,31 @@ two Quick Look extensions under `Contents/PlugIns/`.
   (`QLThumbnailProvider`) → `QuickLookThumbnail.appex`
 - `Resources/web/` — HTML/JS/CSS shipped into every bundle
   - `template.html` — strict CSP, then vendor scripts, then `util.js`,
-    `render-core.js`, `reflow.js`, then `app.js`
+    `render-core.js`, `reflow.js`, `quick-edit-core.js`, `app.js`, then
+    `quick-edit.js` (it extends `window.markee`, so it loads after `app.js`)
   - `app.js` — IIFE wrapping `render`, `scrollToHeading`, `exportStandalone`,
     `reflow`, `renderedText`, `setZoom`, `applySettings`, `find`/`clearFind`,
-    `toast`, plus the task-toggle, `#fragment` and in-window `.md`-link
+    `toast`, `setEditStandIn` (the open Quick Edit stands in for a heading
+    it hides, for scrolling and the active-heading pick), `isReadOnly` (read by
+    `quick-edit.js`), plus the task-toggle, `#fragment` and in-window `.md`-link
     navigation handlers. Exposes `window.markee`.
   - `util.js` — pure helpers (`slugify`, `pickActiveHeading`, find/selection
     and currency-mask helpers), UMD so Node can require them for tests
   - `render-core.js` — markdown-it pipeline construction (`createRenderer`,
-    `splitFrontMatter`/`stripFrontMatter`, `escapeHtml`, the source-line
-    `data-line` stamping); UMD so Node snapshot tests can require it
+    `splitFrontMatter`/`stripFrontMatter`, `escapeHtml`, `isSelfContainedHtml`,
+    the source-range `data-line`/`data-line-end` stamping and the
+    `.markee-html-block` wrapper); UMD so Node snapshot tests can require it
+  - `quick-edit-core.js` / `quick-edit.js` — Quick Edit: the pure part (UMD,
+    Node-tested by `quickedit.test.js`: syntax greying, selection→block
+    mapping, context labels, source-line slicing) and the in-place editor that
+    swaps a block for a textarea of its source lines. Exposes `beginQuickEdit`,
+    `focusQuickEdit`, `saveQuickEdit`, `cancelQuickEdit`, `noticeQuickEdit` and
+    `resolveQuickEdit({ok, reason})` on `window.markee` (`reason`: `conflict`
+    refuses further saves; `encoding`/`write` show a notice and stay retryable).
   - `reflow.js` — Copy Reflowed Markdown (⌥⌘C): unwraps soft-wrapped
     paragraphs using the same markdown-it parse; exposes `window.markeeReflow`
-  - `theme.css` — built-in light/dark theme
+  - `theme.css` — built-in light/dark theme; code blocks and Quick Edit's
+    code-mode editor share `--markee-code-font` / `--markee-code-size`
   - `vendor/` — fetched libs; **gitignored**
 - `Resources/Info.plist`, `Resources/QuickLookPreview-Info.plist`,
   `Resources/QuickLookThumbnail-Info.plist` — app and extension bundle plists
@@ -143,7 +181,7 @@ two Quick Look extensions under `Contents/PlugIns/`.
 - `scripts/vendor.sha256` — SHA-256 manifest of every vendored file;
   `fetch-vendor.sh` fails on mismatch
 - `Tests/MarkeeTests/`, `Tests/MarkeeKitTests/` — Swift unit tests;
-  `Tests/{util,render,wikilink,reflow}.test.js` — Node `--test` suites
+  `Tests/{util,render,wikilink,reflow,quickedit}.test.js` — Node `--test` suites
   (helpers, render snapshot + source lines + attrs allowlist, wiki-links,
   reflow); `Tests/snapshots/sample.html` is the render golden
 - `.github/workflows/` — `ci.yml` (lint + build/test on push/PR) and
@@ -157,7 +195,7 @@ two Quick Look extensions under `Contents/PlugIns/`.
 - Swift loads `markee-app://app/template.html` into the WebView at window open.
 - After `app.js` finishes setup, it posts `{kind: "ready"}` via `webkit.messageHandlers.markee` → Swift flips `templateLoaded` and flushes any queued `render`.
 - Every file change: Swift reads the file, serializes `{source, fileName, docBase, wikiIndex, readOnly}` to JSON (plus `navigated` and `scrollTo` on cross-file navigation), calls `evaluateJavaScript("window.markee.render(<json>);")`.
-- JS posts back `ready`, `outline` (sidebar items), `scrollSection` (active heading), `docStats` (word-count pill), `findResult`, `error` (banner), `copyText` (writes the pasteboard), `taskToggle` (checkbox write-back) and `navigate` (in-window/new-window `.md` navigation). The full list lives at the top of `app.js`.
+- JS posts back `ready`, `outline` (sidebar items), `scrollSection` (active heading), `docStats` (word-count pill), `findResult`, `error` (banner), `copyText` (writes the pasteboard), `taskToggle` (checkbox write-back) and `navigate` (in-window/new-window `.md` navigation), and Quick Edit's `blockEdit` (save request: `start`/`end` source lines, `original`, `replacement`), `editState` (`open`/`dirty`/`focused`) and `contextBlock` (label/editable/line of the right-clicked block). The full list lives at the top of `app.js`.
 - Relative URLs in markdown (e.g. `![](pic.png)`) resolve via a `<base href>` that `app.js` injects per render from the payload's `docBase` (`markee-doc://doc/<docDir-relative-to-workspace-root>/`, from `WorkspaceModel.docBase`). Swift's `DocSchemeHandler` is rooted at the workspace root and serves any file beneath it, with path traversal above the root blocked by `resolveSandboxed`.
 
 ## Non-obvious invariants (don't break these)
@@ -172,6 +210,9 @@ two Quick Look extensions under `Contents/PlugIns/`.
   other main-frame load would replace the preview and inherit the bridge.
   `#fragment` links resolve against `<base href>` (the doc's directory), so
   `app.js` scrolls them in place instead of letting them navigate.
+- **The web view owns a private undo manager** (`MarkeeWebView.undoManager`).
+  Never let page editing reach the window's/document's: the read-only
+  `FileDocument` gets marked edited → autosave → failed Revert → close hang.
 - **The `markee` bridge only accepts the template's main frame**
   (`frameInfo.isMainFrame` + template request URL), and is registered through
   `WeakScriptMessageHandler` — registering the controller directly is a retain
@@ -185,15 +226,57 @@ two Quick Look extensions under `Contents/PlugIns/`.
   `env.lineOffset` = the front-matter line count, so they index the ORIGINAL
   file. Never pair a separate line scan with the DOM by position — that drifted
   on blockquotes, fences in list items, HTML blocks and CRLF front matter and
-  rewrote the wrong line. `splitFrontMatter` is the one front-matter definition
-  (render, lines, reflow); `Tests/render.test.js` checks every stamped task line
-  against the Swift regex.
+  rewrote the wrong line. The same rule stamps `data-line-end` (exclusive) on
+  every range block, lists included (`bullet/ordered_list_open`), plus `<pre>`
+  and raw-HTML wrapper ranges. A list's and a loose item's trailing blank lines
+  are trimmed, counting a line blank only after stripping the list's OWN
+  blockquote depth of `>` (a nested quote's `>` is content), so the ranges
+  Quick Edit presents (after trimming trailing blank lines) nest inside their
+  stamped ancestor's; raw stamps can overflow (an unclosed fence at EOF inside
+  a list item). Each stamp carries the render's
+  random `env.stampKey` (`data-markee-stamp`); `app.js` drops `data-line`/
+  `data-line-end` from anything without it, and markdown-it-attrs can't set
+  them, so raw HTML can't forge a range. `splitFrontMatter` is the one
+  front-matter definition (render, lines, reflow); `Tests/render.test.js`
+  checks every stamped task line against the Swift regex and range nesting.
+- **`.markee-html-block` wraps only self-contained raw HTML outside an open
+  partial HTML context.** One open-tag stack runs across the document's
+  `html_block`s; a wrapper inside an open `<p>`, `<details>`, `<table>` or
+  `<ul>` would close or restructure the author's element (it also renders in
+  Quick Look). The raw HTML inside is emitted byte-for-byte. The wrapper is
+  `display: contents`, is NOT `markee-chrome`, and is unwrapped by
+  `exportStandalone` and `renderedText`; any child/sibling selector in
+  `theme.css` must account for it, as the lede rules do.
 - **Swift's `toggleTask` re-reads the file before writing** and bails if the target line no longer matches `TaskToggle`'s regex (which must accept every marker render-core stamps: bullets, `1.`/`1)`, `>` prefixes). This is the only protection against clobbering concurrent edits in another editor. Keep it. Every bail re-renders from disk so the clicked checkbox snaps back.
 - **`toggleTask` writes back byte-compatibly**: through symlinks (to the resolved target), in the encoding and BOM `readDecodedFile` detected.
 - **Line endings are preserved** in `TaskToggle` by splitting on `"\n"`, leaving trailing `\r` inside each line, and joining on `"\n"`. Don't "normalize" them.
 - **`Resources/Support Markee.md` must contain no task checkboxes.** It's opened from the read-only app bundle; a `- [ ]`/`- [x]` would invite a task-toggle write-back that fails against the signed bundle. Keep the support-nudge copy checkbox-free.
 - **Bumping a vendored library means regenerating the manifest in the same diff.** Change the URL/version in `scripts/fetch-vendor.sh`, run `just clean` (or `rm -rf Resources/web/vendor`) so the bumped file is actually re-downloaded rather than skipped (`fetch-vendor.sh` skips any existing non-empty output file), then `scripts/fetch-vendor.sh --write-manifest`, and commit the updated `scripts/vendor.sha256` alongside — otherwise the next fetch fails integrity verification.
 - **Mermaid uses the UMD bundle (`mermaid.min.js`), not the ESM split build.** The ESM entry imports a tree of separate chunk files that doesn't resolve cleanly under our custom URL scheme. **Held on 11.x** (see `fetch-vendor.sh`): 12 bundles EPL-2.0 ELK, doubles the bundle and needs Safari 17.4+. Dependabot only manages GitHub Actions; vendored JS bumps are manual.
+- **Quick Edit writes go through `BlockEdit`'s re-read-and-compare, and the
+  block's lines come from `data-line`/`data-line-end`.** Those are stamped from
+  markdown-it token maps (same rule as task lines); never pair the DOM with a
+  separate line scan. `saveBlockEdit` re-reads the file and refuses (page keeps
+  the edit open) unless the lines still equal what the editor opened with, so a
+  concurrent edit elsewhere is never clobbered; it ignores `blockEdit` unless an
+  edit is open (a repeated ⌘↩ must not apply twice). Re-renders pause while an
+  edit is open (watcher changes and task-toggle bails only raise a notice;
+  `index-ready` is skipped), and
+  `quickEdit` is cleared BEFORE the write so the watcher event for our own save
+  is an ordinary re-render. Writes keep the symlink target, encoding/BOM and
+  per-line `\r` like `toggleTask`; `BlockEdit`'s doc comment pins which `\r`
+  each new line gets. A source with a lone `\r` is never editable (markdown-it
+  counts it as a line break, `split("\n")` doesn't). Everything injected carries `markee-chrome`,
+  and none of it exists when `readOnly` or the file isn't writable.
+  `saveBlockEdit` re-checks writability (an atomic write would replace even a
+  0444 file) and refuses with a banner; the main-menu item is greyed when the
+  file isn't writable, but stays enabled while an edit is open so a refused
+  save can be retried. Own writes set `lastSelfWrite`; `consumeSelfWrite`
+  matches the watcher's next event against those bytes once (cleared on
+  navigation), so only outside changes count as re-renders watched. A clean
+  edit is closed inside `confirmDiscardQuickEdit` so the page's closing
+  `editState` doesn't render twice; a WebContent crash reload re-reads disk.
+  `onJSCall` and `appBundleURL` are test hooks.
 - **Renaming the app means updating four things in lockstep**: bundle id (`com.markee.preview`), URL schemes (`markee-app`, `markee-doc`), JS global (`window.markee`), and the `webkit.messageHandlers` name (`markee`).
 - **The custom titlebar relies on `WindowAccessor` flipping `titlebarAppearsTransparent` / `titleVisibility` / `.fullSizeContentView` on the host `NSWindow`.** SwiftUI's `.toolbar` modifier reintroduces a toolbar area — don't add it back. The traffic-light gutter in `MarkeeTitlebar` is reserved by `leftGutter: 78` and mirrored on the right; the centered filename's symmetric inset (`titleInset`) is derived from the gutter plus the toggle and chevron widths, so adding a titlebar control means adding its width there. The filename truncates (middle) rather than drawing under the controls.
 - **`pickActiveHeading` (util.js) and the IntersectionObserver (app.js) are paired.** The observer uses `rootMargin: "0px 0px -80% 0px"` to fire when a heading enters the top 20% of the viewport; the helper picks the last heading whose top is ≤ 20% of viewport height. If you change one, change the other to match.

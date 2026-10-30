@@ -3,14 +3,12 @@ import Combine
 import Foundation
 
 enum SupportConfig {
-    // Deliberately empty until go-live: the Polar organization is still in test
-    // mode pending identity verification, so a live checkout would take no
-    // money. Empty keeps isConfigured() false, which makes the heart, the menu
-    // items, and the monthly support doc all dormant — the entire supporter
-    // surface disappears rather than advertising a checkout that can't pay.
-    // Restore this UUID (with the /support redirect and footer link) at
-    // licensing go-live. Covered by test_unconfiguredBuildShowsNoNudgesEvenPastGrace.
-    static let productionOrganizationID = ""
+    // Blanking this is the kill switch: an empty ID keeps isConfigured() false,
+    // which hides the heart, the menu items, and the support doc, so a
+    // build can ship without advertising a checkout that can't take payment.
+    // The /support redirect and site footer link must go with it. Covered by
+    // test_unconfiguredBuildShowsNoNudgesEvenPastGrace.
+    static let productionOrganizationID = "c183b314-d233-473e-8efb-4f2c9ff5061f"
     static let productionBaseURL = "https://api.polar.sh"
 
     static let checkoutURL = URL(string: "https://markee.sbang.dev/support")!
@@ -89,6 +87,16 @@ final class SupportController: ObservableObject {
     // Ambient titlebar affordance: always present for a non-supporter once
     // nudges are active, and removed the moment they become a supporter.
     @Published private(set) var showSupportButton: Bool = false
+    // A crossed milestone waiting for a key window to open the drawer on it,
+    // then the one on screen. Split so a second window becoming key while the
+    // drawer is open doesn't open it again.
+    @Published private(set) var pendingCelebration: SupportMilestone?
+    @Published private(set) var shownCelebration: SupportMilestone?
+    private var usageObservation: AnyCancellable?
+    // The support doc opening on top of a just-shown drawer would bury it and
+    // still spend the day's milestone, so a doc launch holds them off.
+    private var celebrationsHeldThisLaunch = false
+    private var previewingCelebration = false
 
     private let defaults: UserDefaults
     private let now: () -> Date
@@ -109,6 +117,8 @@ final class SupportController: ObservableObject {
         static let firstLaunchDate = "support.firstLaunchDate"
         static let launchCount = "support.launchCount"
         static let lastSupportDocShownDate = "support.lastSupportDocShownDate"
+        static let celebratedMilestones = "support.celebratedMilestones"
+        static let lastMilestoneShownDate = "support.lastMilestoneShownDate"
     }
 
     init(defaults: UserDefaults = .standard,
@@ -127,6 +137,7 @@ final class SupportController: ObservableObject {
 
     private func refreshSupportButton() {
         showSupportButton = nudgesActive && !isSupporter
+        if isSupporter { pendingCelebration = nil }
     }
 
     private func loadState() -> SupportNudgeState {
@@ -152,7 +163,63 @@ final class SupportController: ObservableObject {
             return false
         }
         defaults.set(now(), forKey: Keys.lastSupportDocShownDate)
+        celebrationsHeldThisLaunch = true
+        pendingCelebration = nil
         return true
+    }
+
+    func observe(_ usage: UsageTracker) {
+        usageObservation = usage.$stats.removeDuplicates()
+            .sink { [weak self] in self?.evaluateMilestones($0) }
+    }
+
+    func evaluateMilestones(_ stats: UsageStats) {
+        guard pendingCelebration == nil, shownCelebration == nil, !celebrationsHeldThisLaunch,
+              nudgesActive, !isSupporter,
+              forceNudges || loadState().isPastGracePeriod(now: now()) else { return }
+        pendingCelebration = nextMilestone(stats)
+    }
+
+    private func nextMilestone(_ stats: UsageStats) -> SupportMilestone? {
+        SupportMilestones.next(
+            stats: stats, celebrated: celebratedMilestones(),
+            lastShown: defaults.object(forKey: Keys.lastMilestoneShownDate) as? Date, now: now())
+    }
+
+    /// Stamped on display rather than on detection, so quitting before any
+    /// Markee window is key doesn't spend the milestone unseen. Re-picked here
+    /// too: usage can climb past higher tiers while Markee sits in the
+    /// background, and the drawer shouldn't headline a stale one next to the
+    /// live count. A debug preview is shown as-is and never persisted.
+    func celebrationShown(_ stats: UsageStats) {
+        guard let pending = pendingCelebration else { return }
+        pendingCelebration = nil
+        guard !previewingCelebration else {
+            shownCelebration = pending
+            return
+        }
+        let milestone = nextMilestone(stats) ?? pending
+        let ids = SupportMilestones.celebrated(afterShowing: milestone, stats: stats,
+                                               previously: celebratedMilestones())
+        defaults.set(ids.sorted(), forKey: Keys.celebratedMilestones)
+        defaults.set(now(), forKey: Keys.lastMilestoneShownDate)
+        shownCelebration = milestone
+    }
+
+    func dismissCelebration() {
+        shownCelebration = nil
+        previewingCelebration = false
+    }
+
+    func debugCelebrate(_ stats: UsageStats) {
+        shownCelebration = nil
+        previewingCelebration = true
+        pendingCelebration = SupportMilestones.crossed(stats).first
+            ?? SupportMilestone(kind: .rerenders, threshold: SupportMilestones.listed(.rerenders)[0])
+    }
+
+    private func celebratedMilestones() -> Set<String> {
+        Set(defaults.stringArray(forKey: Keys.celebratedMilestones) ?? [])
     }
 
     func markSupporter(key: String, activationID: String) {
@@ -173,6 +240,8 @@ final class SupportController: ObservableObject {
         defaults.removeObject(forKey: Keys.firstLaunchDate)
         defaults.removeObject(forKey: Keys.launchCount)
         defaults.removeObject(forKey: Keys.lastSupportDocShownDate)
+        defaults.removeObject(forKey: Keys.celebratedMilestones)
+        defaults.removeObject(forKey: Keys.lastMilestoneShownDate)
     }
 
     func debugStateSummary() -> String {

@@ -6,6 +6,40 @@ All notable changes to Markee are documented here. Format roughly follows
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-10-30
+
+### Added
+- **Quick Edit** (⌘↩): select text and fix it in place. The block turns into
+  its Markdown, ⌘↩ saves, Esc cancels. It also appears in the right-click menu
+  (Edit Paragraph, Edit Heading, Edit Code Block, …), warns before closing,
+  quitting or navigating away from an unsaved edit, and refuses to overwrite a
+  file that changed under it. Where a block can't be edited in place, the
+  right-click menu offers **Open in Editor at This Line** instead.
+  - **Edit List**: a selection across list items edits the whole list.
+  - **Edit Block**: raw HTML opens as its source, in the code font.
+  - The Quick Edit menu item is greyed out for read-only files.
+- **Optional supporter license, now live.** Nothing is feature-gated;
+  supporting only silences the throttled nudges: a pink titlebar heart that
+  beats every few minutes, a support note at most every two weeks, and a
+  brief thank-you when you cross a usage milestone (100 re-renders, 30 days
+  with Markee, each year with Markee, …) that closes itself after a few
+  seconds. Pay what you want once, from $4.99, or $5 a year as a
+  Sustainer. A key covers up to 3 Macs; free a slot any time from the Polar
+  customer portal. **Markee ▸ Enter License Key…** redeems it.
+- **Team licenses**: a voluntary commercial-support license at $10 per seat per
+  year (minimum 5), bought self-serve at
+  [markee.sbang.dev/teams/checkout](https://markee.sbang.dev/teams/checkout).
+  Includes priority support, a signed support agreement on request, and
+  invoices; each seat holder gets their own key. See `COMMERCIAL.md`.
+- **Debug menu** (`MARKEE_DEV_TOOLS=1`): new **Preview Milestone
+  Celebration** item, which shows a celebration without using up a real one,
+  and **Reset Nudge Timers** now also clears celebrated milestones.
+
+### Changed
+- **Shorter right-click menu.** The Edit item comes first, Markee's three
+  copies sit in a **Copy As** submenu under Copy, and the always-disabled
+  Copy Link with Highlight and the Speech submenu are gone.
+
 ## [1.2.0] — 2026-10-03
 
 ### Added

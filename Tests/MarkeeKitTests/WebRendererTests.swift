@@ -134,9 +134,34 @@ final class WebRendererTests: XCTestCase {
         XCTAssertTrue(html.contains("url(data:font/woff2"), "KaTeX fonts not inlined")
         XCTAssertFalse(html.contains("url(fonts/KaTeX_Main-Regular.woff2)"))
         XCTAssertFalse(html.contains("data-line="))
+        XCTAssertFalse(html.contains("data-line-end="))
         // Forced light, or a dark-mode reader gets theme.css's OS-dark block.
         XCTAssertTrue(html.contains("<html lang=\"en\" data-theme=\"light\">"))
         XCTAssertTrue(html.contains("<title>e.md</title>"))
+    }
+
+    /// The Quick Edit wrapper around a raw-HTML block is screen-only plumbing.
+    func test_exportUnwrapsHtmlBlocks() async throws {
+        let webRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Resources/web", isDirectory: true)
+        try XCTSkipUnless(FileManager.default.fileExists(
+            atPath: webRoot.appendingPathComponent("vendor/markdown-it/markdown-it.min.js").path),
+            "run `just fetch-vendor` first")
+        let renderer = WebRenderer(docRoot: URL(fileURLWithPath: NSTemporaryDirectory()), webRoot: webRoot)
+        try await renderer.loadTemplate()
+        try await withTimeout(seconds: 20) { try await renderer.waitUntilReady() }
+        try await renderer.render(source: "<div class=\"box\">\n<b>x</b>\n</div>\n\npara\n",
+                                  fileName: "h.md", readOnly: false)
+        let wrapped = try await renderer.webView.evaluateJavaScript(
+            "!!document.querySelector('#content .markee-html-block')") as? Bool
+        XCTAssertEqual(wrapped, true)
+        let html = try await renderer.webView.callAsyncJavaScript(
+            "return await window.markee.exportStandalone();", contentWorld: .page) as? String ?? ""
+        let body = html.components(separatedBy: "<body>").last ?? ""
+        XCTAssertFalse(body.contains("markee-html-block"))
+        XCTAssertTrue(body.contains("<div class=\"box\">"))
+        XCTAssertTrue(body.contains("<b>x</b>"))
     }
 
     /// A theme change while no diagram is on screen must still reach the next

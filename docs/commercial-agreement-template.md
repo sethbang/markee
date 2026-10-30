@@ -14,7 +14,7 @@ This agreement is between **Seth Bang** ("Maintainer"), the author of Markee, an
 **Effective date:** [date]
 **Term:** 1 year from the effective date.
 **Seats:** [N] seats.
-**Fee:** USD $15 per seat per year — total **$[N × 15]** for the term, invoiced
+**Fee:** USD $10 per seat per year — total **$[N × 10]** for the term, invoiced
 via Polar (merchant of record).
 
 ### 1. The software
@@ -33,7 +33,8 @@ In exchange for the fee, the Maintainer provides, for the term:
   basis (target first response: 2 business days). Support covers installation,
   configuration, and defect triage; it does not include custom development or
   guaranteed fixes.
-- A **license key** that removes the in-app support prompts for Customer's users.
+- A **license key** for each seat that removes the in-app support prompts for
+  that user.
 - This signed agreement and an invoice for Customer's records.
 
 ### 3. Seats
@@ -44,9 +45,10 @@ counts are honor-based; the Software does not technically enforce them.
 
 ### 4. Fees & renewal
 
-The fee is due on the effective date and covers the term. The term does not
-auto-renew; Customer may purchase a renewal before or after expiry to continue
-priority support. Lapsing does not affect Customer's MIT-licensed right to keep
+The fee is due on the effective date and covers the term. The subscription
+renews annually at the then-current per-seat rate unless Customer cancels
+before the renewal date through the Polar customer portal; cancelling ends
+priority support at the end of the paid term. Lapsing does not affect Customer's MIT-licensed right to keep
 using the Software.
 
 ### 5. Warranty & liability

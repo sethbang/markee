@@ -3,6 +3,9 @@
 :root {
     color-scheme: light dark;
 
+    --markee-code-font: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --markee-code-size: 0.893rem;
+
     /* Light tokens (default) */
     --surface: #fafbfc;
     --surface-layer-1: #f1f2f5;       /* sidebar, code blocks */
@@ -133,8 +136,12 @@ h1 {
     /* No bottom border — replaced with whitespace + lede paragraph */
 }
 
-/* Lede: first paragraph immediately after H1 */
-article.markdown-body > h1 + p {
+/* Lede: first paragraph immediately after H1. The .markee-html-block forms
+   match as if the raw-HTML wrapper weren't there, as in Export. */
+article.markdown-body > h1 + p,
+article.markdown-body > .markee-html-block > h1 + p,
+article.markdown-body > .markee-html-block:has(> h1:last-child) + p,
+article.markdown-body > h1 + .markee-html-block > p:first-child {
     font-size: 1.036rem;
     color: var(--fg-muted);
     line-height: 1.55;
@@ -226,8 +233,8 @@ hr {
 
 /* Code ------------------------------------------------------------------- */
 code, kbd, samp {
-    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-    font-size: 0.893rem;
+    font-family: var(--markee-code-font);
+    font-size: var(--markee-code-size);
 }
 :not(pre) > code {
     background: var(--code-bg);
@@ -248,7 +255,7 @@ pre code {
     background: transparent;
     color: var(--fg);
     padding: 0;
-    font-size: 0.893rem;
+    font-size: var(--markee-code-size);
 }
 /* Override highlight.js color tokens via our palette */
 .hljs-keyword, .hljs-built_in, .hljs-type { color: var(--hl-kw); }
@@ -412,6 +419,85 @@ pre.hljs:hover .markee-code-copy { opacity: 1; }
     color: #1a1c22;
 }
 
+/* Quick Edit ------------------------------------------------------------- */
+/* Wraps a self-contained raw-HTML block only to carry its source range;
+   it must never add a box (screen or print). */
+.markee-html-block { display: contents; }
+/* The rendered block stays in the DOM (hidden on screen only) so Print and
+   Export keep the saved content while an edit is open. */
+@media screen {
+    .markee-quickedit-source { display: none !important; }
+}
+.markee-quickedit {
+    margin: 0 0 12px -12px;
+    padding-left: 10px;
+    border-left: 2px solid var(--accent);
+}
+.markee-quickedit-field { position: relative; }
+.markee-quickedit-mirror,
+.markee-quickedit-input {
+    display: block;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    font: inherit;
+    line-height: inherit;
+    letter-spacing: inherit;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    tab-size: 4;
+}
+.markee-quickedit-mirror {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+    color: var(--fg);
+}
+.markee-quickedit-syntax { color: var(--fg-dim); }
+.markee-quickedit-input {
+    position: relative;
+    min-height: 1lh;
+    resize: none;
+    overflow: hidden;
+    background: transparent;
+    color: transparent;
+    caret-color: var(--fg);
+    outline: none;
+    -webkit-text-fill-color: transparent;
+}
+.markee-quickedit-input::selection { background: color-mix(in srgb, var(--accent) 28%, transparent); }
+.markee-quickedit-code .markee-quickedit-field {
+    font-family: var(--markee-code-font);
+    font-size: var(--markee-code-size);
+    line-height: 1.6;
+}
+.markee-quickedit-hint,
+.markee-quickedit-notice {
+    margin-top: 4px;
+    font-size: 0.786rem;
+    line-height: 1.4;
+    color: var(--fg-muted);
+}
+.markee-quickedit-hint kbd {
+    font-size: 0.75rem;
+    padding: 0 4px;
+    border: 1px solid var(--divider-mid);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    background: var(--surface);
+}
+.markee-quickedit-notice {
+    display: inline-block;
+    padding: 2px 8px;
+    border: 1px solid var(--toast-border);
+    border-radius: 4px;
+    background: var(--toast-bg);
+    color: var(--toast-fg);
+}
+.markee-quickedit-notice[hidden] { display: none; }
+
 /* Print / PDF — always light, zoom-normalized, paginated. Placed last so its
    :root overrides win over the dark-scheme block when printing in dark mode. */
 @media print {
@@ -435,7 +521,7 @@ pre.hljs:hover .markee-code-copy { opacity: 1; }
     }
 
     /* Screen-only affordances never print. */
-    .markee-chrome { display: none !important; }
+    .markee-chrome, .markee-quickedit { display: none !important; }
 
     html { zoom: 1 !important; background: #ffffff; }
     body { background: #ffffff; color: var(--fg); }

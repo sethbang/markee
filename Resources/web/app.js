@@ -1,7 +1,8 @@
 // Markee renderer — runs inside WKWebView.
 // Receives render({source, fileName, docBase, readOnly, wikiIndex, navigated, scrollTo})
 // from Swift. Posts back (kind) ready/outline/error/findResult/scrollSection/
-// docStats/copyText/taskToggle/navigate via webkit.messageHandlers.markee.
+// docStats/copyText/taskToggle/navigate via webkit.messageHandlers.markee;
+// quick-edit.js adds blockEdit/editState/contextBlock.
 
 (function () {
     "use strict";
@@ -53,6 +54,20 @@
     let lastActiveID = null;
     let currentHeadings = [];
     let scrollRAF = null;
+    let editWrapper = null;
+
+    // A heading hidden behind an open Quick Edit has no box; the edit stands
+    // in for it, for both scrolling and the active-heading pick.
+    function headingBox(h) {
+        return editWrapper && h.closest(".markee-quickedit-source") ? editWrapper : h;
+    }
+
+    function setEditStandIn(wrapper) {
+        if (headingObserver && editWrapper) headingObserver.unobserve(editWrapper);
+        editWrapper = wrapper || null;
+        if (headingObserver && editWrapper) headingObserver.observe(editWrapper);
+        recomputeActiveHeading(currentHeadings);
+    }
 
     function rebuildHeadingObserver(headings) {
         if (headingObserver) {
@@ -72,6 +87,7 @@
         }, { rootMargin: "0px 0px -80% 0px", threshold: 0 });
 
         headings.forEach((h) => headingObserver.observe(h));
+        if (editWrapper) headingObserver.observe(editWrapper);
 
         // Initial pick
         recomputeActiveHeading(headings);
@@ -86,7 +102,7 @@
     }
 
     function recomputeActiveHeading(headings) {
-        const positions = headings.map((h) => ({ id: h.id, top: h.getBoundingClientRect().top }));
+        const positions = headings.map((h) => ({ id: h.id, top: headingBox(h).getBoundingClientRect().top }));
         const id = pickActiveHeading(positions, window.innerHeight);
         if (id !== lastActiveID) {
             lastActiveID = id;
@@ -254,8 +270,9 @@
         // so we can pull heading source-line numbers off the tokens.
         let tokens;
         let html;
+        const stampKey = newStampKey();
         try {
-            const env = { wikiIndex: payload.wikiIndex || {}, lineOffset: frontMatterLines };
+            const env = { wikiIndex: payload.wikiIndex || {}, lineOffset: frontMatterLines, stampKey: stampKey };
             tokens = md.parse(src, env);
             html = md.renderer.render(tokens, md.options, env);
         } catch (err) {
@@ -266,6 +283,7 @@
         }
 
         article.innerHTML = html;
+        dropForgedStamps(article, stampKey);
 
         // Document stats for the native word-count pill — computed here, before
         // decorateContent injects chrome text ("Copy", language badges) and
@@ -388,7 +406,7 @@
 
     function scrollToHeading(id) {
         const el = document.getElementById(id);
-        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+        if (el) headingBox(el).scrollIntoView({ behavior: "smooth", block: "start" });
     }
 
     // ---- lazy Mermaid -------------------------------------------------------
@@ -523,9 +541,12 @@
             acceptNode(node) {
                 if (!node.nodeValue) return NodeFilter.FILTER_REJECT;
                 const p = node.parentElement;
-                // .katex-mathml is KaTeX's visually-hidden MathML twin: matches
-                // there would be counted and stepped to but never visible.
-                if (!p || p.closest(".markee-chrome, .katex-mathml, script, style")) return NodeFilter.FILTER_REJECT;
+                // .katex-mathml is KaTeX's visually-hidden MathML twin, and
+                // .markee-quickedit-source the block hidden behind an open
+                // edit: matches there would be counted but never visible.
+                if (!p || p.closest(".markee-chrome, .markee-quickedit-source, .katex-mathml, script, style")) {
+                    return NodeFilter.FILTER_REJECT;
+                }
                 return NodeFilter.FILTER_ACCEPT;
             }
         });
@@ -614,6 +635,31 @@
         return css;
     }
 
+    function newStampKey() {
+        const bytes = new Uint8Array(16);
+        if (window.crypto && window.crypto.getRandomValues) window.crypto.getRandomValues(bytes);
+        else for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+        return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+    }
+
+    // Raw HTML can carry its own data-line / data-line-end, which task
+    // write-back and Quick Edit would follow. Only stamps that carry this
+    // render's key came from render-core's token maps.
+    function dropForgedStamps(root, key) {
+        root.querySelectorAll("[data-line],[data-line-end],[data-markee-stamp]").forEach((e) => {
+            if (e.getAttribute("data-markee-stamp") !== key) {
+                e.removeAttribute("data-line");
+                e.removeAttribute("data-line-end");
+            }
+            e.removeAttribute("data-markee-stamp");
+        });
+    }
+
+    // The wrapper only carries a raw-HTML block's source range for Quick Edit.
+    function unwrapHtmlBlocks(root) {
+        root.querySelectorAll(".markee-html-block").forEach((e) => e.replaceWith(...e.childNodes));
+    }
+
     async function exportStandalone() {
         const article = document.getElementById("content");
         if (!article) return "";
@@ -621,8 +667,11 @@
         // Screen-only chrome (copy buttons, badges, heading anchors) never
         // ships in canonical exports.
         clone.querySelectorAll(".markee-chrome").forEach((e) => e.remove());
+        // A block open in Quick Edit is only hidden on screen; export its saved form.
+        clone.querySelectorAll(".markee-quickedit-source").forEach((e) => e.classList.remove("markee-quickedit-source"));
         // Source-line stamps only mean something next to the file on disk.
-        clone.querySelectorAll("[data-line]").forEach((e) => e.removeAttribute("data-line"));
+        clone.querySelectorAll("[data-line],[data-line-end]").forEach((e) => { e.removeAttribute("data-line"); e.removeAttribute("data-line-end"); });
+        unwrapHtmlBlocks(clone);
         clone.querySelectorAll("[data-mermaid-source]").forEach((e) => e.removeAttribute("data-mermaid-source"));
 
         // Inline images as data URIs
@@ -688,6 +737,8 @@ ${cssParts.join("\n\n")}
         // Screen-only chrome + KaTeX's hidden MathML tree would pollute/duplicate
         // the text; drop them (same markee-chrome contract exportStandalone uses).
         clone.querySelectorAll(".markee-chrome, .katex-mathml").forEach((e) => e.remove());
+        clone.querySelectorAll(".markee-quickedit-source").forEach((e) => e.classList.remove("markee-quickedit-source"));
+        unwrapHtmlBlocks(clone);
         // innerText needs a laid-out element; a detached clone degrades to
         // textContent (no block breaks). Attach off-screen to force layout.
         clone.style.position = "absolute";
@@ -783,7 +834,9 @@ ${cssParts.join("\n\n")}
         applySettings,
         toast: showToast,
         find,
-        clearFind
+        clearFind,
+        setEditStandIn,
+        isReadOnly: () => isReadOnly
     };
 
     // Mermaid loads as a classic UMD <script> on demand (ensureMermaid). Its

@@ -11,7 +11,7 @@ struct SupportNudgeState {
 
     static let gracePeriod: TimeInterval = 7 * 24 * 3600
     static let minLaunches = 3
-    static let docQuietPeriod: TimeInterval = 30 * 24 * 3600
+    static let docQuietPeriod: TimeInterval = 14 * 24 * 3600
 
     func isPastGracePeriod(now: Date) -> Bool {
         guard let first = firstLaunchDate, launchCount >= Self.minLaunches else { return false }

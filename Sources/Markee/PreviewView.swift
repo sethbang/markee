@@ -65,7 +65,12 @@ private struct PreviewContent: View {
                 onBack: { controller.goBack() },
                 onForward: { controller.goForward() },
                 showSupport: support.showSupportButton,
-                drawer: AnyView(SupportDrawer(support: support, usage: UsageTracker.shared))
+                drawer: AnyView(SupportDrawer(support: support, usage: UsageTracker.shared)),
+                celebrate: support.pendingCelebration != nil,
+                isCelebrationPending: { support.pendingCelebration != nil },
+                isKeyWindow: { controller.webView.window?.isKeyWindow == true },
+                onDrawerShown: { support.celebrationShown(UsageTracker.shared.stats) },
+                onDrawerClosed: { support.dismissCelebration() }
             )
             HStack(spacing: 0) {
                 OutlineSidebar(controller: controller)
@@ -110,6 +115,7 @@ private struct PreviewContent: View {
             }
         }
         .focusedSceneValue(\.pinState, controller.pinState)
+        .focusedSceneValue(\.canQuickEdit, controller.quickEditMenuEnabled)
     }
 
     private func configureWindow(_ window: NSWindow) {
@@ -122,6 +128,7 @@ private struct PreviewContent: View {
         }
         window.isMovableByWindowBackground = false
         controller.applyInitialPinStateIfNeeded()
+        controller.guardClose(of: window)
     }
 }
 

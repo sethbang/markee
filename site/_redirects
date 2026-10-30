@@ -1,10 +1,11 @@
-# Supporter checkout is intentionally absent: the Polar organization is still
-# in test mode pending identity verification, so this route would send people
-# to a checkout that cannot accept payment. Restore it, together with the
-# footer link and SupportConfig.productionOrganizationID, at licensing go-live.
+# Supporter checkout (one-time Markee License + yearly Sustainer on one page).
+# The app's Support button and the bundled support doc both point at /support,
+# so this rule is load-bearing for the whole paid path.
+/support   https://buy.polar.sh/polar_cl_v9SHG98qWgV4XbtIjDZ9SVESE34WPHiLYxXMi4Wf3Zc  302
 /releases  https://github.com/sethbang/markee/releases  302
 /repo      https://github.com/sethbang/markee           302
 /docs      https://github.com/sethbang/markee#readme    302
-# Commercial / Team licensing. Points at the COMMERCIAL.md overview until the
-# self-serve Polar Team checkout exists; repoint to the checkout at go-live.
-/teams     https://github.com/sethbang/markee/blob/main/COMMERCIAL.md  302
+# Commercial / Team licensing: /teams is the overview (linked from the footer),
+# /teams/checkout the seat-based Team checkout it links to.
+/teams           https://github.com/sethbang/markee/blob/main/COMMERCIAL.md  302
+/teams/checkout  https://buy.polar.sh/polar_cl_anlGkLvASQOmCbqH3q9PcJrGPnIahlRjAm6ar0zHQSY  302
