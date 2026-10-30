@@ -6,7 +6,18 @@ All notable changes to Markee are documented here. Format roughly follows
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-10-30
+
 ### Added
+- **Quick Edit** (⌘↩): select text and fix it in place. The block turns into
+  its Markdown, ⌘↩ saves, Esc cancels. It also appears in the right-click menu
+  (Edit Paragraph, Edit Heading, Edit Code Block, …), warns before closing,
+  quitting or navigating away from an unsaved edit, and refuses to overwrite a
+  file that changed under it. Where a block can't be edited in place, the
+  right-click menu offers **Open in Editor at This Line** instead.
+  - **Edit List**: a selection across list items edits the whole list.
+  - **Edit Block**: raw HTML opens as its source, in the code font.
+  - The Quick Edit menu item is greyed out for read-only files.
 - **Optional supporter license, now live.** Nothing is feature-gated;
   supporting only silences the throttled nudges: a pink titlebar heart that
   beats every few minutes, a support note at most every two weeks, and a
@@ -23,6 +34,11 @@ All notable changes to Markee are documented here. Format roughly follows
 - **Debug menu** (`MARKEE_DEV_TOOLS=1`): new **Preview Milestone
   Celebration** item, which shows a celebration without using up a real one,
   and **Reset Nudge Timers** now also clears celebrated milestones.
+
+### Changed
+- **Shorter right-click menu.** The Edit item comes first, Markee's three
+  copies sit in a **Copy As** submenu under Copy, and the always-disabled
+  Copy Link with Highlight and the Speech submenu are gone.
 
 ## [1.2.0] — 2026-10-03
 
