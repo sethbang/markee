@@ -15,7 +15,7 @@ permissions:
 jobs:
   release:
     name: Build + notarize + publish Markee.app
-    runs-on: macos-14
+    runs-on: macos-15
     # Signing/notary secrets live in the `release` environment; give it
     # required reviewers (Settings ▸ Environments) so a pushed tag alone can't
     # sign and publish.
